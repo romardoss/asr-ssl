@@ -1,9 +1,9 @@
 # Monitoring, language ID, and metadata scripts
-numpy
-pandas
-pyarrow
-matplotlib
-tqdm
+pyarrow==26.0.0
+numpy==2.5.3
+pandas==3.0.6
+matplotlib==3.11.2
+tqdm==4.70.1
 torch
 transformers
 faster-whisper
