@@ -1,7 +1,8 @@
 """Read Common Voice splits and write manifests under fine-tune/manifests.
 
 Uses ``PATH_TO_COMMON_VOICE`` from the environment or the repo ``.env``, and
-the train/dev/test TSVs in ``meta/common-voice``.
+the train/dev/test TSVs in ``meta/common-voice``. Each TSV line stays one clip.
+Sentences that contain a comma or a quote are written with normal CSV quoting.
 
     python fine-tune/read_common_voice.py
 """

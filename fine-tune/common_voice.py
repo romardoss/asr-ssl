@@ -6,6 +6,7 @@ from the TSV files in ``meta/common-voice`` (train_validated, dev, test).
 
 from __future__ import annotations
 
+import csv
 import os
 from pathlib import Path
 
@@ -66,10 +67,26 @@ def load_split(name: str, clips_dir: Path) -> pd.DataFrame:
     path = META_DIR / filename
     if not path.is_file():
         raise SystemExit(f"Split file not found: {path}")
-    frame = pd.read_csv(path, sep="\t", usecols=["path", "sentence"], dtype=str)
+    # Common Voice TSVs are one clip per line. Quotes inside a sentence are
+    # text, so the default CSV quote rules must stay off or one unmatched
+    # quote swallows the following rows.
+    source_rows = sum(1 for _ in path.open(encoding="utf-8")) - 1
+    frame = pd.read_csv(
+        path,
+        sep="\t",
+        usecols=["path", "sentence"],
+        dtype=str,
+        quoting=csv.QUOTE_NONE,
+        encoding="utf-8",
+    )
+    if len(frame) != source_rows:
+        raise SystemExit(f"{name}: parsed {len(frame)} rows, TSV has {source_rows}")
     frame = frame.dropna(subset=["path", "sentence"])
     frame["sentence"] = frame["sentence"].str.strip()
     frame = frame[frame["sentence"].ne("")]
+    merged = frame["sentence"].str.contains(r"[\t\n]|common_voice_uk_", regex=True)
+    if merged.any():
+        raise SystemExit(f"{name}: {int(merged.sum())} sentence(s) still contain another row")
     frame["audio_path"] = frame["path"].map(lambda name: str(clips_dir / name))
     frame["split"] = name
     present = frame["audio_path"].map(lambda item: Path(item).is_file())
