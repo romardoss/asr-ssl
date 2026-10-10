@@ -1,0 +1,21 @@
+# Monitoring, language ID, and metadata scripts
+numpy
+pandas
+pyarrow
+matplotlib
+tqdm
+torch
+transformers
+faster-whisper
+ctranslate2
+
+# Whisper fine-tuning
+torchaudio
+lightning
+jiwer
+wandb
+
+# Notebooks (Common Voice EDA, Kaggle VOA collector)
+datasets
+huggingface_hub
+soundfile
