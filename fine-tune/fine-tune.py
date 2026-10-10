@@ -223,6 +223,12 @@ def collate_fn(features: list[dict]) -> dict:
     }
 
 
+def _seed_worker(worker_id: int) -> None:
+    worker_seed = torch.initial_seed() % 2**32
+    np.random.seed(worker_seed)
+    random.seed(worker_seed)
+
+
 class WhisperFineTuner(L.LightningModule):
     def __init__(
         self,
@@ -417,12 +423,6 @@ def main() -> None:
 
     def make_loader(frame: pd.DataFrame, batch_size: int, shuffle: bool) -> DataLoader:
         dataset = WhisperASRDataset(frame, processor, lang_token_id)
-
-        def _seed_worker(worker_id: int) -> None:
-            worker_seed = torch.initial_seed() % 2**32
-            np.random.seed(worker_seed)
-            random.seed(worker_seed)
-
         return DataLoader(
             dataset,
             batch_size=batch_size,
