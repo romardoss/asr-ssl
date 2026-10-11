@@ -1,0 +1,25 @@
+{
+  "model": "/mnt/data/rberehun/checkpoints/model-whisper-uk/model-whisper-uk-epoch00.ckpt",
+  "kind": "ckpt",
+  "base_model": "openai/whisper-medium",
+  "language": "uk",
+  "split": "test",
+  "clips": 10956,
+  "gpus": [
+    "nvidia1"
+  ],
+  "eval_batch_size": 64,
+  "loss": 0.27065976379915724,
+  "metrics": {
+    "wer": 0.17398039514449692,
+    "cer": 0.043564125641839174,
+    "mer": 0.1704016913319239,
+    "wil": 0.2850696692352924,
+    "wip": 0.7149303307647076,
+    "substitutions": 10671.0,
+    "deletions": 1377.0,
+    "insertions": 1654.0,
+    "hits": 66708.0,
+    "n": 10956.0
+  }
+}

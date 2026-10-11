@@ -1,0 +1,25 @@
+{
+  "model": "openai/whisper-medium",
+  "kind": "hf",
+  "base_model": "openai/whisper-medium",
+  "language": "uk",
+  "split": "test",
+  "clips": 10956,
+  "gpus": [
+    "nvidia1"
+  ],
+  "eval_batch_size": 32,
+  "loss": 0.895213000628413,
+  "metrics": {
+    "wer": 0.209114226217685,
+    "cer": 0.05814161794192745,
+    "mer": 0.20486633743422608,
+    "wil": 0.3394602079654647,
+    "wip": 0.6605397920345353,
+    "substitutions": 12987.0,
+    "deletions": 1849.0,
+    "insertions": 1633.0,
+    "hits": 63920.0,
+    "n": 10956.0
+  }
+}

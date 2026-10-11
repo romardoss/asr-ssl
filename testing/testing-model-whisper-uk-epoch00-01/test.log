@@ -1,0 +1,22 @@
+2026-10-11 20:09:15,685 INFO model=/mnt/data/rberehun/checkpoints/model-whisper-uk/model-whisper-uk-epoch00.ckpt kind=ckpt gpus=['nvidia1'] CUDA_VISIBLE_DEVICES=1 eval_batch=64
+2026-10-11 20:09:16,994 INFO test clips: 10956
+2026-10-11 20:09:17,678 INFO HTTP Request: GET https://huggingface.co/api/models/openai/whisper-medium/revision/main "HTTP/1.1 200 OK"
+2026-10-11 20:09:17,824 INFO HTTP Request: GET https://huggingface.co/api/models/openai/whisper-medium/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-10-11 20:09:17,975 INFO HTTP Request: GET https://huggingface.co/api/models/openai/whisper-medium/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-10-11 20:09:18,128 INFO HTTP Request: GET https://huggingface.co/api/models/openai/whisper-medium/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
+2026-10-11 20:09:18,391 INFO HTTP Request: GET https://huggingface.co/api/models/openai/whisper-medium/revision/main "HTTP/1.1 200 OK"
+2026-10-11 20:09:39,310 INFO cuda:0 batch 1/172
+2026-10-11 20:10:44,335 INFO cuda:0 batch 20/172
+2026-10-11 20:11:53,239 INFO cuda:0 batch 40/172
+2026-10-11 20:13:02,237 INFO cuda:0 batch 60/172
+2026-10-11 20:14:10,993 INFO cuda:0 batch 80/172
+2026-10-11 20:15:20,967 INFO cuda:0 batch 100/172
+2026-10-11 20:16:31,703 INFO cuda:0 batch 120/172
+2026-10-11 20:17:41,932 INFO cuda:0 batch 140/172
+2026-10-11 20:19:01,101 INFO cuda:0 batch 160/172
+2026-10-11 20:19:43,876 INFO loss 0.2707 metrics {'wer': 0.17398039514449692, 'cer': 0.043564125641839174, 'mer': 0.1704016913319239, 'wil': 0.2850696692352924, 'wip': 0.7149303307647076, 'substitutions': 10671.0, 'deletions': 1377.0, 'insertions': 1654.0, 'hits': 66708.0, 'n': 10956.0}
+2026-10-11 20:19:43,876 INFO wrote /home/rberehun/asr-ssl/testing/testing-model-whisper-uk-epoch00-01/results.json
+2026-10-11 20:19:43,876 INFO wrote /home/rberehun/asr-ssl/testing/testing-model-whisper-uk-epoch00-01/predictions.csv
+2026-10-11 20:19:43,876 INFO wrote /home/rberehun/asr-ssl/testing/testing-model-whisper-uk-epoch00-01/plots/error_rates.png
+2026-10-11 20:19:43,876 INFO wrote /home/rberehun/asr-ssl/testing/testing-model-whisper-uk-epoch00-01/plots/edit_counts.png
+2026-10-11 20:19:43,876 INFO wrote /home/rberehun/asr-ssl/testing/testing-model-whisper-uk-epoch00-01/plots/utterance_wer.png

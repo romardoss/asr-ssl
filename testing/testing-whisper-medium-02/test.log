@@ -1,0 +1,31 @@
+2026-10-11 19:53:06,475 INFO model=openai/whisper-medium kind=hf gpus=['nvidia1'] CUDA_VISIBLE_DEVICES=1 eval_batch=32
+2026-10-11 19:53:07,871 INFO test clips: 10956
+2026-10-11 19:53:08,460 INFO HTTP Request: GET https://huggingface.co/api/models/openai/whisper-medium/revision/main "HTTP/1.1 200 OK"
+2026-10-11 19:53:08,609 INFO HTTP Request: GET https://huggingface.co/api/models/openai/whisper-medium/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-10-11 19:53:08,763 INFO HTTP Request: GET https://huggingface.co/api/models/openai/whisper-medium/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-10-11 19:53:08,911 INFO HTTP Request: GET https://huggingface.co/api/models/openai/whisper-medium/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
+2026-10-11 19:53:09,169 INFO HTTP Request: GET https://huggingface.co/api/models/openai/whisper-medium/revision/main "HTTP/1.1 200 OK"
+2026-10-11 19:53:18,110 INFO cuda:0 batch 1/343
+2026-10-11 19:54:03,190 INFO cuda:0 batch 20/343
+2026-10-11 19:54:45,698 INFO cuda:0 batch 40/343
+2026-10-11 19:55:26,583 INFO cuda:0 batch 60/343
+2026-10-11 19:56:15,286 INFO cuda:0 batch 80/343
+2026-10-11 19:57:04,414 INFO cuda:0 batch 100/343
+2026-10-11 19:57:48,119 INFO cuda:0 batch 120/343
+2026-10-11 19:58:30,031 INFO cuda:0 batch 140/343
+2026-10-11 19:59:13,403 INFO cuda:0 batch 160/343
+2026-10-11 19:59:58,696 INFO cuda:0 batch 180/343
+2026-10-11 20:00:39,953 INFO cuda:0 batch 200/343
+2026-10-11 20:01:21,815 INFO cuda:0 batch 220/343
+2026-10-11 20:02:03,022 INFO cuda:0 batch 240/343
+2026-10-11 20:02:45,466 INFO cuda:0 batch 260/343
+2026-10-11 20:03:28,291 INFO cuda:0 batch 280/343
+2026-10-11 20:04:10,636 INFO cuda:0 batch 300/343
+2026-10-11 20:04:53,839 INFO cuda:0 batch 320/343
+2026-10-11 20:05:34,969 INFO cuda:0 batch 340/343
+2026-10-11 20:05:41,291 INFO loss 0.8952 metrics {'wer': 0.209114226217685, 'cer': 0.05814161794192745, 'mer': 0.20486633743422608, 'wil': 0.3394602079654647, 'wip': 0.6605397920345353, 'substitutions': 12987.0, 'deletions': 1849.0, 'insertions': 1633.0, 'hits': 63920.0, 'n': 10956.0}
+2026-10-11 20:05:41,291 INFO wrote /home/rberehun/asr-ssl/testing/testing-whisper-medium-02/results.json
+2026-10-11 20:05:41,291 INFO wrote /home/rberehun/asr-ssl/testing/testing-whisper-medium-02/predictions.csv
+2026-10-11 20:05:41,291 INFO wrote /home/rberehun/asr-ssl/testing/testing-whisper-medium-02/plots/error_rates.png
+2026-10-11 20:05:41,291 INFO wrote /home/rberehun/asr-ssl/testing/testing-whisper-medium-02/plots/edit_counts.png
+2026-10-11 20:05:41,291 INFO wrote /home/rberehun/asr-ssl/testing/testing-whisper-medium-02/plots/utterance_wer.png
