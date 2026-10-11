@@ -2,8 +2,9 @@
 
 The encoder stays frozen. Train/dev/test rows come from ``meta/common-voice``
 and audio from ``$PATH_TO_COMMON_VOICE/clips``. The starting checkpoint is
-``$WHISPER_MODEL``. Training uses both RTX 5090s
-(``nvidia0`` = cuda:0, ``nvidia1`` = cuda:1).
+``$WHISPER_MODEL``. GPUs come from ``NVIDIA0`` and ``NVIDIA1`` in ``.env``
+(``true`` or ``false``). Batch sizes come from ``TRAIN_BATCH_SIZE`` and
+``EVAL_BATCH_SIZE``.
 
 Checkpoints (model, optimizer, and scheduler) are written to
 ``$PATH_TO_CHECKPOINTS/<model-name>/`` at the end of every epoch and after
@@ -15,14 +16,52 @@ resumes from it. Metrics and logs go to ``fine-tune/output/<model-name>/``.
 
 from __future__ import annotations
 
+import os
+import sys
+from pathlib import Path
+
+FINE_TUNE_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(FINE_TUNE_DIR))
+
+from common_voice import checkpoint_root, load_dotenv, load_splits, whisper_model
+
+
+def _env_flag(name: str) -> bool:
+    raw = os.environ.get(name, "").strip().lower()
+    if raw not in {"true", "false"}:
+        raise SystemExit(f"{name} must be true or false. Set it in .env.")
+    return raw == "true"
+
+
+def _positive_int(name: str) -> int:
+    raw = os.environ.get(name, "").strip()
+    if not raw.isdigit() or int(raw) < 1:
+        raise SystemExit(f"{name} must be a positive integer. Set it in .env.")
+    return int(raw)
+
+
+def _selected_gpus() -> list[int]:
+    """GPUs named in .env, pinned before CUDA initializes.
+
+    Lightning workers already have ``LOCAL_RANK`` and their own
+    ``CUDA_VISIBLE_DEVICES``, so only the parent process sets the mask.
+    """
+    load_dotenv()
+    selected = [index for index in (0, 1) if _env_flag(f"NVIDIA{index}")]
+    if not selected:
+        raise SystemExit("Enable at least one GPU in .env (NVIDIA0, NVIDIA1).")
+    if "LOCAL_RANK" not in os.environ:
+        os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(str(index) for index in selected)
+    return selected
+
+
+PHYSICAL_GPUS = _selected_gpus()
+
 import argparse
 import json
 import logging
-import os
 import random
 import re
-import sys
-from pathlib import Path
 
 import av
 import jiwer
@@ -37,14 +76,9 @@ from lightning.pytorch.strategies import DDPStrategy
 from torch.utils.data import DataLoader, Dataset
 from transformers import WhisperForConditionalGeneration, WhisperProcessor, get_linear_schedule_with_warmup
 
-FINE_TUNE_DIR = Path(__file__).resolve().parent
-sys.path.insert(0, str(FINE_TUNE_DIR))
-
 from checkpoints import BatchFractionCheckpoint, resume_checkpoint
-from common_voice import checkpoint_root, load_dotenv, load_splits, whisper_model
 
 DEFAULT_MODEL_NAME = "model-whisper-uk"
-NVIDIA_DEVICES = {"nvidia0": 0, "nvidia1": 1}
 MAX_AUDIO_SECONDS = 30.0
 MAX_LABEL_TOKENS = 448
 OUTPUT_DIR = FINE_TUNE_DIR / "output"
@@ -67,13 +101,6 @@ def parse_args() -> argparse.Namespace:
         help="Used in checkpoint filenames and as the directory under PATH_TO_CHECKPOINTS.",
     )
     parser.add_argument("--language", default="uk", help="Whisper language code, e.g. uk.")
-    parser.add_argument(
-        "--devices",
-        default="nvidia0,nvidia1",
-        help="Comma-separated device names (nvidia0, nvidia1) or CUDA indices.",
-    )
-    parser.add_argument("--batch-size", type=int, default=8)
-    parser.add_argument("--eval-batch-size", type=int, default=8)
     parser.add_argument("--learning-rate", type=float, default=1e-5)
     parser.add_argument("--warmup-steps", type=int, default=50)
     parser.add_argument("--max-epochs", type=int, default=2)
@@ -96,7 +123,10 @@ def parse_args() -> argparse.Namespace:
         default=True,
         help="Score the dev split before any updates, unless training is resumed.",
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+    args.batch_size = _positive_int("TRAIN_BATCH_SIZE")
+    args.eval_batch_size = _positive_int("EVAL_BATCH_SIZE")
+    return args
 
 
 def _parse_limit(value: str) -> int | float:
@@ -104,26 +134,6 @@ def _parse_limit(value: str) -> int | float:
     if any(token in value for token in (".", "e", "E")):
         return float(value)
     return int(value)
-
-
-def resolve_devices(spec: str) -> list[int]:
-    indices: list[int] = []
-    for part in spec.split(","):
-        name = part.strip()
-        if not name:
-            continue
-        if name in NVIDIA_DEVICES:
-            indices.append(NVIDIA_DEVICES[name])
-        elif name.isdigit():
-            indices.append(int(name))
-        else:
-            known = ", ".join(NVIDIA_DEVICES)
-            raise SystemExit(f"Unknown device {name!r}. Use {known}, or a CUDA index.")
-    if not indices:
-        raise SystemExit("No devices selected.")
-    if len(set(indices)) != len(indices):
-        raise SystemExit(f"Duplicate devices in {spec!r}.")
-    return indices
 
 
 def normalize_text(text: str) -> str:
@@ -400,9 +410,15 @@ def main() -> None:
     torch.set_float32_matmul_precision("high")
     torch.autograd.graph.set_warn_on_accumulate_grad_stream_mismatch(False)
 
-    device_ids = resolve_devices(args.devices)
-    device_names = [name for name, index in NVIDIA_DEVICES.items() if index in device_ids]
-    log.info("devices %s -> cuda %s", device_names or device_ids, device_ids)
+    device_ids = list(range(len(PHYSICAL_GPUS)))
+    device_names = [f"nvidia{index}" for index in PHYSICAL_GPUS]
+    log.info(
+        "gpus %s CUDA_VISIBLE_DEVICES=%s train_batch=%d eval_batch=%d",
+        device_names,
+        os.environ.get("CUDA_VISIBLE_DEVICES", ""),
+        args.batch_size,
+        args.eval_batch_size,
+    )
 
     if not args.model_id:
         args.model_id = whisper_model()
