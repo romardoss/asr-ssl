@@ -1,7 +1,8 @@
 """Load the local Ukrainian Common Voice splits.
 
-Audio files live under ``$PATH_TO_COMMON_VOICE/clips``. Split membership comes
-from the TSV files in ``meta/common-voice`` (train_validated, dev, test).
+Audio files live under ``paths.common_voice`` / ``clips`` from ``config.yaml``.
+Split membership comes from the TSV files in ``meta/common-voice``
+(train_validated, dev, test).
 """
 
 from __future__ import annotations
@@ -11,6 +12,8 @@ import os
 from pathlib import Path
 
 import pandas as pd
+
+from settings import load_settings
 
 ROOT = Path(__file__).resolve().parents[1]
 META_DIR = ROOT / "meta" / "common-voice"
@@ -35,11 +38,7 @@ def load_dotenv(path: Path | None = None) -> None:
 
 
 def common_voice_root() -> Path:
-    load_dotenv()
-    raw = os.environ.get("PATH_TO_COMMON_VOICE", "").strip()
-    if not raw:
-        raise SystemExit("PATH_TO_COMMON_VOICE is not set. Add it to .env or the environment.")
-    root = Path(raw)
+    root = load_settings().common_voice
     clips = root / "clips"
     if not clips.is_dir():
         raise SystemExit(f"Common Voice clips directory not found: {clips}")
@@ -47,19 +46,11 @@ def common_voice_root() -> Path:
 
 
 def whisper_model() -> str:
-    load_dotenv()
-    raw = os.environ.get("WHISPER_MODEL", "").strip()
-    if not raw:
-        raise SystemExit("WHISPER_MODEL is not set. Add it to .env or the environment.")
-    return raw
+    return load_settings().model_id
 
 
 def checkpoint_root() -> Path:
-    load_dotenv()
-    raw = os.environ.get("PATH_TO_CHECKPOINTS", "").strip()
-    if not raw:
-        raise SystemExit("PATH_TO_CHECKPOINTS is not set. Add it to .env or the environment.")
-    return Path(raw)
+    return load_settings().checkpoints
 
 
 def load_split(name: str, clips_dir: Path) -> pd.DataFrame:

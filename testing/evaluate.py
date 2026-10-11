@@ -1,9 +1,9 @@
 """Score a Whisper model on the Common Voice test split.
 
-The model is a checkpoint or directory path, or ``WHISPER_MODEL`` from ``.env``
-when ``--model`` is omitted. A ``.ckpt`` file is a fine-tune checkpoint loaded
-on top of ``WHISPER_MODEL``. GPUs and the batch size come from ``NVIDIA0``,
-``NVIDIA1``, and ``EVAL_BATCH_SIZE``.
+The model is a checkpoint or directory path, or ``model.id`` from
+``config.yaml`` when ``--model`` is omitted. A ``.ckpt`` file is a fine-tune
+checkpoint loaded on top of ``model.id``. GPUs, language, and the batch size
+come from that same file.
 
 Results and plots are written to ``testing/testing-<model>-XX/``.
 
@@ -49,7 +49,7 @@ plt.rcParams.update(
 
 
 def _load_fine_tune():
-    # Importing fine-tune pins CUDA_VISIBLE_DEVICES from NVIDIA0/NVIDIA1
+    # Importing fine-tune pins CUDA_VISIBLE_DEVICES from config.yaml
     # before torch initializes CUDA.
     spec = importlib.util.spec_from_file_location("whisper_fine_tune", FINE_TUNE_PATH)
     if spec is None or spec.loader is None:
@@ -73,9 +73,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--model",
         default=None,
-        help="Checkpoint (.ckpt) or model directory. Default: WHISPER_MODEL from .env.",
+        help="Checkpoint (.ckpt) or model directory. Default: model.id from config.yaml.",
     )
-    parser.add_argument("--language", default="uk", help="Whisper language code, e.g. uk.")
     return parser.parse_args()
 
 
@@ -401,7 +400,8 @@ def write_plots(run_dir: Path, metrics: dict[str, float], references: list[str],
 def main() -> None:
     args = parse_args()
     kind, source = resolve_source(args.model)
-    batch_size = ft._positive_int("EVAL_BATCH_SIZE")
+    language = ft.SETTINGS.language
+    batch_size = ft.SETTINGS.testing_batch_size
     slug = model_slug(kind, source)
     run_dir = next_run_dir(slug)
     run_dir.mkdir(parents=True, exist_ok=False)
@@ -414,7 +414,7 @@ def main() -> None:
     log = logging.getLogger("testing")
     device_names = [f"nvidia{index}" for index in ft.PHYSICAL_GPUS]
     log.info(
-        "model=%s kind=%s gpus=%s CUDA_VISIBLE_DEVICES=%s eval_batch=%d",
+        "model=%s kind=%s gpus=%s CUDA_VISIBLE_DEVICES=%s testing_batch=%d",
         source,
         kind,
         device_names,
@@ -426,7 +426,7 @@ def main() -> None:
     log.info("test clips: %d", len(frame))
     torch.set_float32_matmul_precision("high")
     references, hypotheses, loss = run_evaluation(
-        frame, kind, source, args.language, batch_size, run_dir / "test.log"
+        frame, kind, source, language, batch_size, run_dir / "test.log"
     )
     metrics = ft.corpus_metrics(references, hypotheses)
     predictions = pd.DataFrame(
@@ -442,7 +442,7 @@ def main() -> None:
         "model": source,
         "kind": kind,
         "base_model": ft.whisper_model() if kind == "ckpt" else source,
-        "language": args.language,
+        "language": language,
         "split": "test",
         "clips": len(frame),
         "gpus": device_names,

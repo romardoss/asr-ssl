@@ -1,14 +1,14 @@
 """Fine-tune a Whisper decoder on Ukrainian Common Voice.
 
 The encoder stays frozen. Train/dev/test rows come from ``meta/common-voice``
-and audio from ``$PATH_TO_COMMON_VOICE/clips``. The starting checkpoint is
-``$WHISPER_MODEL``. GPUs come from ``NVIDIA0`` and ``NVIDIA1`` in ``.env``
-(``true`` or ``false``). Batch sizes come from ``TRAIN_BATCH_SIZE`` and
-``EVAL_BATCH_SIZE``.
+and audio from ``paths.common_voice`` in ``config.yaml``. The starting
+checkpoint, GPUs, batch sizes, and training hyperparameters all come from
+that file.
 
 Checkpoints (model, optimizer, and scheduler) are written to
-``$PATH_TO_CHECKPOINTS/<model-name>/`` at the end of every epoch and after
-every 5% of the training batches. If ``last.ckpt`` is already there, training
+``paths.checkpoints/<model-name>/`` at the end of every epoch and after
+every ``training.checkpoint_every`` fraction of the training batches. If
+``last.ckpt`` is already there and ``training.resume`` is true, training
 resumes from it. Metrics and logs go to ``fine-tune/output/<model-name>/``.
 
     python fine-tune/fine-tune.py
@@ -23,41 +23,25 @@ from pathlib import Path
 FINE_TUNE_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(FINE_TUNE_DIR))
 
-from common_voice import checkpoint_root, load_dotenv, load_splits, whisper_model
+from settings import load_settings
+
+SETTINGS = load_settings()
 
 
-def _env_flag(name: str) -> bool:
-    raw = os.environ.get(name, "").strip().lower()
-    if raw not in {"true", "false"}:
-        raise SystemExit(f"{name} must be true or false. Set it in .env.")
-    return raw == "true"
-
-
-def _positive_int(name: str) -> int:
-    raw = os.environ.get(name, "").strip()
-    if not raw.isdigit() or int(raw) < 1:
-        raise SystemExit(f"{name} must be a positive integer. Set it in .env.")
-    return int(raw)
-
-
-def _selected_gpus() -> list[int]:
-    """GPUs named in .env, pinned before CUDA initializes.
+def _pin_gpus() -> tuple[int, ...]:
+    """Pin ``gpus`` from config.yaml before CUDA initializes.
 
     Lightning workers already have ``LOCAL_RANK`` and their own
     ``CUDA_VISIBLE_DEVICES``, so only the parent process sets the mask.
     """
-    load_dotenv()
-    selected = [index for index in (0, 1) if _env_flag(f"NVIDIA{index}")]
-    if not selected:
-        raise SystemExit("Enable at least one GPU in .env (NVIDIA0, NVIDIA1).")
+    selected = SETTINGS.gpus
     if "LOCAL_RANK" not in os.environ:
         os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(str(index) for index in selected)
     return selected
 
 
-PHYSICAL_GPUS = _selected_gpus()
+PHYSICAL_GPUS = _pin_gpus()
 
-import argparse
 import json
 import logging
 import random
@@ -77,63 +61,14 @@ from torch.utils.data import DataLoader, Dataset
 from transformers import WhisperForConditionalGeneration, WhisperProcessor, get_linear_schedule_with_warmup
 
 from checkpoints import BatchFractionCheckpoint, resume_checkpoint
+from common_voice import checkpoint_root, load_splits
 
-DEFAULT_MODEL_NAME = "model-whisper-uk"
-MAX_AUDIO_SECONDS = 30.0
-MAX_LABEL_TOKENS = 448
+MAX_AUDIO_SECONDS = SETTINGS.max_audio_seconds
+MAX_LABEL_TOKENS = SETTINGS.max_label_tokens
 OUTPUT_DIR = FINE_TUNE_DIR / "output"
 
 _PUNCTUATION = re.compile(r"[^\w\s']+", flags=re.UNICODE)
 _SPACES = re.compile(r"\s+")
-
-
-def parse_args() -> argparse.Namespace:
-    load_dotenv()
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--model-id",
-        default=os.environ.get("WHISPER_MODEL", "").strip() or None,
-        help="Hugging Face model id. Defaults to WHISPER_MODEL from .env.",
-    )
-    parser.add_argument(
-        "--model-name",
-        default=DEFAULT_MODEL_NAME,
-        help="Used in checkpoint filenames and as the directory under PATH_TO_CHECKPOINTS.",
-    )
-    parser.add_argument("--language", default="uk", help="Whisper language code, e.g. uk.")
-    parser.add_argument("--learning-rate", type=float, default=1e-5)
-    parser.add_argument("--warmup-steps", type=int, default=50)
-    parser.add_argument("--max-epochs", type=int, default=2)
-    parser.add_argument("--num-workers", type=int, default=4)
-    parser.add_argument("--precision", default="bf16-true")
-    parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--gradient-clip-val", type=float, default=1.0)
-    parser.add_argument(
-        "--resume",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Resume from the newest checkpoint in the model directory when one exists.",
-    )
-    parser.add_argument("--limit-train-batches", type=_parse_limit, default=1.0)
-    parser.add_argument("--limit-val-batches", type=_parse_limit, default=1.0)
-    parser.add_argument("--limit-test-batches", type=_parse_limit, default=1.0)
-    parser.add_argument(
-        "--baseline-eval",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Score the dev split before any updates, unless training is resumed.",
-    )
-    args = parser.parse_args()
-    args.batch_size = _positive_int("TRAIN_BATCH_SIZE")
-    args.eval_batch_size = _positive_int("EVAL_BATCH_SIZE")
-    return args
-
-
-def _parse_limit(value: str) -> int | float:
-    """Lightning treats an int as a batch count and a float as a fraction."""
-    if any(token in value for token in (".", "e", "E")):
-        return float(value)
-    return int(value)
 
 
 def normalize_text(text: str) -> str:
@@ -247,12 +182,14 @@ class WhisperFineTuner(L.LightningModule):
         lang_token_id: int,
         learning_rate: float,
         warmup_steps: int,
+        weight_decay: float,
     ):
         super().__init__()
         self.model = model
         self.tokenizer = processor.tokenizer
         self.learning_rate = learning_rate
         self.warmup_steps = warmup_steps
+        self.weight_decay = weight_decay
         self.save_hyperparameters(ignore=["model", "processor"])
 
         for parameter in self.model.model.encoder.parameters():
@@ -371,7 +308,7 @@ class WhisperFineTuner(L.LightningModule):
 
     def configure_optimizers(self):
         parameters = [parameter for parameter in self.model.parameters() if parameter.requires_grad]
-        optimizer = torch.optim.AdamW(parameters, lr=self.learning_rate)
+        optimizer = torch.optim.AdamW(parameters, lr=self.learning_rate, weight_decay=self.weight_decay)
         scheduler = get_linear_schedule_with_warmup(
             optimizer,
             num_warmup_steps=self.warmup_steps,
@@ -399,42 +336,39 @@ def write_results(path: Path, payload: dict) -> None:
 
 
 def main() -> None:
-    args = parse_args()
+    cfg = SETTINGS
     local_rank = int(os.environ.get("LOCAL_RANK", "0"))
-    output_dir = OUTPUT_DIR / args.model_name
+    output_dir = OUTPUT_DIR / cfg.model_name
     if local_rank == 0:
         setup_logging(output_dir / "train.log")
     log = logging.getLogger("fine-tune")
 
-    L.seed_everything(args.seed, workers=True)
+    L.seed_everything(cfg.seed, workers=True)
     torch.set_float32_matmul_precision("high")
     torch.autograd.graph.set_warn_on_accumulate_grad_stream_mismatch(False)
 
     device_ids = list(range(len(PHYSICAL_GPUS)))
     device_names = [f"nvidia{index}" for index in PHYSICAL_GPUS]
     log.info(
-        "gpus %s CUDA_VISIBLE_DEVICES=%s train_batch=%d eval_batch=%d",
+        "gpus %s CUDA_VISIBLE_DEVICES=%s train_batch=%d testing_after_train_batch=%d",
         device_names,
         os.environ.get("CUDA_VISIBLE_DEVICES", ""),
-        args.batch_size,
-        args.eval_batch_size,
+        cfg.train_batch_size,
+        cfg.testing_after_train_batch_size,
     )
-
-    if not args.model_id:
-        args.model_id = whisper_model()
 
     splits = load_splits()
     for name, frame in splits.items():
         log.info("%s clips: %d", name, len(frame))
 
-    processor = WhisperProcessor.from_pretrained(args.model_id)
-    lang_token = f"<|{args.language}|>"
+    processor = WhisperProcessor.from_pretrained(cfg.model_id)
+    lang_token = f"<|{cfg.language}|>"
     lang_token_id = processor.tokenizer.convert_tokens_to_ids(lang_token)
     unk_id = processor.tokenizer.unk_token_id
     if lang_token_id is None or lang_token_id == unk_id:
-        raise SystemExit(f"{args.model_id} has no language token {lang_token}")
+        raise SystemExit(f"{cfg.model_id} has no language token {lang_token}")
 
-    model = WhisperForConditionalGeneration.from_pretrained(args.model_id)
+    model = WhisperForConditionalGeneration.from_pretrained(cfg.model_id)
     model.config.use_cache = False
 
     def make_loader(frame: pd.DataFrame, batch_size: int, shuffle: bool) -> DataLoader:
@@ -443,57 +377,58 @@ def main() -> None:
             dataset,
             batch_size=batch_size,
             shuffle=shuffle,
-            num_workers=args.num_workers,
-            worker_init_fn=_seed_worker if args.num_workers > 0 else None,
+            num_workers=cfg.num_workers,
+            worker_init_fn=_seed_worker if cfg.num_workers > 0 else None,
             collate_fn=collate_fn,
             pin_memory=True,
             drop_last=shuffle,
-            persistent_workers=args.num_workers > 0,
+            persistent_workers=cfg.num_workers > 0,
         )
 
-    train_loader = make_loader(splits["train"], args.batch_size, shuffle=True)
-    dev_loader = make_loader(splits["dev"], args.eval_batch_size, shuffle=False)
-    test_loader = make_loader(splits["test"], args.eval_batch_size, shuffle=False)
+    train_loader = make_loader(splits["train"], cfg.train_batch_size, shuffle=True)
+    dev_loader = make_loader(splits["dev"], cfg.testing_after_train_batch_size, shuffle=False)
+    test_loader = make_loader(splits["test"], cfg.testing_after_train_batch_size, shuffle=False)
 
     module = WhisperFineTuner(
         model,
         processor=processor,
         lang_token_id=lang_token_id,
-        learning_rate=args.learning_rate,
-        warmup_steps=args.warmup_steps,
+        learning_rate=cfg.learning_rate,
+        warmup_steps=cfg.warmup_steps,
+        weight_decay=cfg.weight_decay,
     )
     frozen = sum(parameter.numel() for parameter in module.model.parameters() if not parameter.requires_grad)
     trainable = sum(parameter.numel() for parameter in module.model.parameters() if parameter.requires_grad)
     log.info("frozen encoder parameters: %d", frozen)
     log.info("trainable decoder parameters: %d", trainable)
 
-    ckpt_dir = checkpoint_root() / args.model_name
-    checkpoint_callback = BatchFractionCheckpoint(ckpt_dir, args.model_name, fraction=0.05)
-    logger = CSVLogger(save_dir=str(OUTPUT_DIR), name=args.model_name)
+    ckpt_dir = checkpoint_root() / cfg.model_name
+    checkpoint_callback = BatchFractionCheckpoint(ckpt_dir, cfg.model_name, fraction=cfg.checkpoint_every)
+    logger = CSVLogger(save_dir=str(OUTPUT_DIR), name=cfg.model_name)
     strategy = DDPStrategy(find_unused_parameters=False) if len(device_ids) > 1 else "auto"
     trainer = L.Trainer(
-        max_epochs=args.max_epochs,
+        max_epochs=cfg.max_epochs,
         accelerator="gpu",
         devices=device_ids,
         strategy=strategy,
-        precision=args.precision,
-        gradient_clip_val=args.gradient_clip_val,
+        precision=cfg.precision,
+        gradient_clip_val=cfg.gradient_clip,
         callbacks=[checkpoint_callback, LearningRateMonitor(logging_interval="step")],
         logger=logger,
         default_root_dir=str(output_dir),
         enable_checkpointing=False,
         num_sanity_val_steps=0,
-        limit_train_batches=args.limit_train_batches,
-        limit_val_batches=args.limit_val_batches,
-        limit_test_batches=args.limit_test_batches,
+        limit_train_batches=cfg.limit_train_batches,
+        limit_val_batches=cfg.limit_val_batches,
+        limit_test_batches=cfg.limit_test_batches,
         enable_progress_bar=True,
     )
 
-    ckpt_path = resume_checkpoint(ckpt_dir, args.resume)
+    ckpt_path = resume_checkpoint(ckpt_dir, cfg.resume)
     baseline_metrics: dict[str, float] = {}
     if ckpt_path is not None:
         log.info("resuming from %s", ckpt_path)
-    elif args.baseline_eval:
+    elif cfg.baseline_eval:
         log.info("scoring the dev split before fine-tuning")
         trainer.validate(module, dataloaders=dev_loader)
         baseline_metrics = dict(module.val_metrics)
@@ -503,11 +438,11 @@ def main() -> None:
 
     if trainer.is_global_zero:
         payload = {
-            "model_id": args.model_id,
-            "model_name": args.model_name,
-            "language": args.language,
+            "model_id": cfg.model_id,
+            "model_name": cfg.model_name,
+            "language": cfg.language,
             "devices": device_names or device_ids,
-            "epochs": args.max_epochs,
+            "epochs": cfg.max_epochs,
             "frozen": "encoder",
             "trainable": "decoder",
             "clips": {name: len(frame) for name, frame in splits.items()},
