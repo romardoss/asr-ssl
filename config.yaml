@@ -48,7 +48,7 @@ pseudo_labelling:
   ukrainian_meta: meta/languages/ukrainian.csv
   timestamps: meta/languages/ukrainian_30s.csv
   sample_rate: 16000
-  batch_size: 32
+  batch_size: 128
   language: uk
   task: transcribe
   precision: bf16
