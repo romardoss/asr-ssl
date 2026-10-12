@@ -26,6 +26,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
+from tqdm import tqdm
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE_CSV = ROOT / "meta" / "languages" / "ukrainian.csv"
@@ -182,16 +183,26 @@ def chunk_row(row: pd.Series, spans: list[tuple[float, float]] | None) -> list[d
 
 def spans_for_shard(shard: Path, needed: set[str], model) -> dict[str, list[tuple[float, float]]]:
     found: dict[str, list[tuple[float, float]]] = {}
+    position = int(os.environ.get("CHUNK_BAR_POSITION", "0"))
     parquet = pq.ParquetFile(shard)
-    for batch in parquet.iter_batches(batch_size=1, columns=["audio"]):
-        audio = batch.to_pylist()[0]["audio"]
-        name = str(audio["path"])
-        if name not in needed:
-            continue
-        waveform = decode_audio(audio["bytes"])
-        duration = len(waveform) / VAD_SAMPLE_RATE
-        boundaries = speech_boundaries(waveform, model)
-        found[name] = chunk_spans(duration, boundaries)
+    with tqdm(
+        total=len(needed),
+        desc=shard.name,
+        unit="clip",
+        position=position,
+        leave=False,
+        file=sys.stderr,
+    ) as progress:
+        for batch in parquet.iter_batches(batch_size=1, columns=["audio"]):
+            audio = batch.to_pylist()[0]["audio"]
+            name = str(audio["path"])
+            if name not in needed:
+                continue
+            waveform = decode_audio(audio["bytes"])
+            duration = len(waveform) / VAD_SAMPLE_RATE
+            boundaries = speech_boundaries(waveform, model)
+            found[name] = chunk_spans(duration, boundaries)
+            progress.update(1)
     return found
 
 
@@ -241,8 +252,6 @@ def main() -> None:
     for audio_path, spans in spans_for_shard(shard, pending, model).items():
         append_progress(destination, audio_path, spans)
         finished += 1
-        if finished == 1 or finished % 25 == 0 or finished == len(pending):
-            print(f"{shard.name}: chunked {finished}/{len(pending)} {audio_path} pieces={len(spans)}", flush=True)
     if finished != len(pending):
         raise SystemExit(f"{shard.name}: chunked {finished} of {len(pending)} clips")
 

@@ -17,6 +17,7 @@ import time
 from pathlib import Path
 
 import pandas as pd
+from tqdm import tqdm
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -43,11 +44,11 @@ def merged_progress(shards: list[Path]) -> dict[str, list[tuple[float, float]]]:
     return found
 
 
-def stop(running: list[tuple[subprocess.Popen, Path]]) -> None:
-    for process, _shard in running:
+def stop(running: list[tuple[subprocess.Popen, Path, int]]) -> None:
+    for process, _shard, _slot in running:
         if process.poll() is None:
             os.killpg(process.pid, signal.SIGTERM)
-    for process, _shard in running:
+    for process, _shard, _slot in running:
         try:
             process.wait(timeout=15)
         except subprocess.TimeoutExpired:
@@ -57,33 +58,40 @@ def stop(running: list[tuple[subprocess.Popen, Path]]) -> None:
 
 def run_shards(shards: list[Path], max_processes: int) -> None:
     pending = list(shards)
-    running: list[tuple[subprocess.Popen, Path]] = []
-    while pending or running:
-        while pending and len(running) < max_processes:
-            shard = pending.pop(0)
-            process = subprocess.Popen(
-                [sys.executable, str(CHUNK_SCRIPT), "--shard", str(shard)],
-                start_new_session=True,
-            )
-            running.append((process, shard))
-            print(f"start {shard.name} ({len(shards) - len(pending)}/{len(shards)})", flush=True)
-        still_running: list[tuple[subprocess.Popen, Path]] = []
-        failed: tuple[Path, int] | None = None
-        for process, shard in running:
-            code = process.poll()
-            if code is None:
-                still_running.append((process, shard))
-            elif code != 0:
-                failed = (shard, code)
-            else:
-                print(f"done {shard.name}", flush=True)
-        running = still_running
-        if failed is not None:
-            stop(running)
-            shard, code = failed
-            raise SystemExit(f"{shard.name} exited with status {code}")
-        if pending and len(running) >= max_processes:
-            time.sleep(0.5)
+    running: list[tuple[subprocess.Popen, Path, int]] = []
+    free_slots = list(range(1, max_processes + 1))
+    with tqdm(total=len(shards), desc="shards", unit="shard", position=0, file=sys.stderr) as progress:
+        while pending or running:
+            while pending and len(running) < max_processes:
+                shard = pending.pop(0)
+                slot = free_slots.pop(0)
+                environment = os.environ.copy()
+                environment["CHUNK_BAR_POSITION"] = str(slot)
+                process = subprocess.Popen(
+                    [sys.executable, str(CHUNK_SCRIPT), "--shard", str(shard)],
+                    start_new_session=True,
+                    env=environment,
+                )
+                running.append((process, shard, slot))
+            still_running: list[tuple[subprocess.Popen, Path, int]] = []
+            failed: tuple[Path, int] | None = None
+            for process, shard, slot in running:
+                code = process.poll()
+                if code is None:
+                    still_running.append((process, shard, slot))
+                elif code != 0:
+                    failed = (shard, code)
+                    free_slots.append(slot)
+                else:
+                    progress.update(1)
+                    free_slots.append(slot)
+            running = still_running
+            if failed is not None:
+                stop(running)
+                shard, code = failed
+                raise SystemExit(f"{shard.name} exited with status {code}")
+            if pending and len(running) >= max_processes:
+                time.sleep(0.5)
 
 
 def main() -> None:
