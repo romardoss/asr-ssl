@@ -41,3 +41,16 @@ training:
 data:
   max_audio_seconds: 30.0
   max_label_tokens: 448
+
+pseudo_labelling:
+  teacher_model: /mnt/data/rberehun/checkpoints/model-whisper-uk/last.ckpt
+  voa: /mnt/data/rberehun/voa-ukr
+  ukrainian_meta: meta/languages/ukrainian.csv
+  timestamps: meta/languages/ukrainian_30s.csv
+  sample_rate: 16000
+  batch_size: 32
+  language: uk
+  task: transcribe
+  precision: bf16
+  resume: true
+  output_dir: pseudo-labelling/output
