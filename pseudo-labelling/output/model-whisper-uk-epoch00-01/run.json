@@ -1,0 +1,10 @@
+{
+  "teacher_model": "/mnt/data/rberehun/checkpoints/model-whisper-uk/model-whisper-uk-epoch00.ckpt",
+  "base_model": "openai/whisper-medium",
+  "language": "uk",
+  "sample_rate": 16000,
+  "batch_size": 128,
+  "gpus": [
+    "nvidia1"
+  ]
+}

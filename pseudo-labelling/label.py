@@ -135,6 +135,19 @@ def timestamp_text(segment: Segment) -> str:
     return f"{segment.start:.3f}-{segment.end:.3f}"
 
 
+def flush_batch(model, processor, settings: LabellingSettings, labels_path: Path, batch_audio: list, batch_rows: list[dict]) -> int:
+    if not batch_audio:
+        return 0
+    texts = transcribe(model, processor, batch_audio, settings)
+    for row, text in zip(batch_rows, texts):
+        row["text"] = text
+    append_labels(labels_path, batch_rows)
+    count = len(batch_rows)
+    batch_audio.clear()
+    batch_rows.clear()
+    return count
+
+
 def main() -> None:
     settings = load_labelling()
     pin_gpus(settings)
@@ -200,11 +213,13 @@ def main() -> None:
         by_shard[location[audio_path]].add(audio_path)
 
     labelled = 0
-    for shard, names in tqdm(by_shard.items(), desc="shards", unit="shard", file=sys.stderr):
+    batch_audio: list = []
+    batch_rows: list[dict] = []
+    files = tqdm(total=len(pending_paths), desc="files", unit="file", position=1, file=sys.stderr)
+    for shard, names in tqdm(by_shard.items(), desc="shards", unit="shard", position=0, file=sys.stderr):
         for audio_path, audio_bytes in iter_shard_audio(shard, names):
+            files.set_postfix_str(audio_path, refresh=False)
             waveform = decode(audio_bytes, settings.sample_rate)
-            batch_audio = []
-            batch_rows = []
             for segment in by_path[audio_path]:
                 if segment.id in done:
                     continue
@@ -231,19 +246,10 @@ def main() -> None:
                     }
                 )
                 if len(batch_audio) == settings.batch_size:
-                    texts = transcribe(model, processor, batch_audio, settings)
-                    for row, text in zip(batch_rows, texts):
-                        row["text"] = text
-                    append_labels(labels_path, batch_rows)
-                    labelled += len(batch_rows)
-                    batch_audio = []
-                    batch_rows = []
-            if batch_audio:
-                texts = transcribe(model, processor, batch_audio, settings)
-                for row, text in zip(batch_rows, texts):
-                    row["text"] = text
-                append_labels(labels_path, batch_rows)
-                labelled += len(batch_rows)
+                    labelled += flush_batch(model, processor, settings, labels_path, batch_audio, batch_rows)
+            files.update(1)
+    labelled += flush_batch(model, processor, settings, labels_path, batch_audio, batch_rows)
+    files.close()
     (destination / COMPLETE_NAME).write_text("ok\n", encoding="utf-8")
     print(f"labelled {labelled} new slices -> {labels_path}", flush=True)
 

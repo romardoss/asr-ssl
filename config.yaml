@@ -43,7 +43,7 @@ data:
   max_label_tokens: 448
 
 pseudo_labelling:
-  teacher_model: /mnt/data/rberehun/checkpoints/model-whisper-uk/last.ckpt
+  teacher_model: /mnt/data/rberehun/checkpoints/model-whisper-uk/model-whisper-uk-epoch00.ckpt
   voa: /mnt/data/rberehun/voa-ukr
   ukrainian_meta: meta/languages/ukrainian.csv
   timestamps: meta/languages/ukrainian_30s.csv
