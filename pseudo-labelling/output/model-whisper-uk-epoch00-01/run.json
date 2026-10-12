@@ -3,7 +3,7 @@
   "base_model": "openai/whisper-medium",
   "language": "uk",
   "sample_rate": 16000,
-  "batch_size": 128,
+  "batch_size": 64,
   "gpus": [
     "nvidia1"
   ]
