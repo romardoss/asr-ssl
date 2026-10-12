@@ -16,6 +16,9 @@ jiwer
 wandb
 pyyaml==6.0.3
 
+# Pseudo-labelling
+silero-vad
+
 # Notebooks (Common Voice EDA, Kaggle VOA collector)
 datasets
 huggingface_hub
