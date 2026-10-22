@@ -11,12 +11,14 @@ import subprocess
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
 
-from settings import LabellingSettings
+if TYPE_CHECKING:
+    from settings import LabellingSettings
 
 
 @dataclass(frozen=True)

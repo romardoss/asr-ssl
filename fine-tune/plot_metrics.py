@@ -7,6 +7,7 @@ metrics file; it does not start or modify training.
 
     python fine-tune/plot_metrics.py --version 2
     python fine-tune/plot_metrics.py --version 3 --watch
+    python fine-tune/plot_metrics.py --model-name student_model-whisper-uk --watch
 """
 
 from __future__ import annotations
@@ -50,7 +51,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--model-name",
         default=DEFAULT_MODEL_NAME,
-        help="Directory name under fine-tune/output. Default: model-whisper-uk.",
+        help="Directory name under fine-tune/output. Default: model-whisper-uk. Student runs use student_model-whisper-uk.",
     )
     parser.add_argument(
         "--version",
@@ -330,10 +331,16 @@ def fingerprint(path: Path) -> tuple[int, int] | None:
     return stat.st_mtime_ns, stat.st_size
 
 
-def training_is_running() -> bool:
+def training_script(model_name: str) -> str:
+    if model_name.startswith("student_"):
+        return "fine-tune-student.py"
+    return "fine-tune/fine-tune.py"
+
+
+def training_is_running(model_name: str) -> bool:
     # A separate watcher must not signal the trainer. Existence of the process
     # only decides when this watcher itself can stop.
-    needle = "fine-tune/fine-tune.py"
+    needle = training_script(model_name)
     for entry in Path("/proc").glob("[0-9]*/cmdline"):
         try:
             command = entry.read_bytes().replace(b"\x00", b" ").decode("utf-8", "replace")
@@ -344,7 +351,7 @@ def training_is_running() -> bool:
     return False
 
 
-def watch(version_dir: Path, interval: float) -> None:
+def watch(version_dir: Path, model_name: str, interval: float) -> None:
     metrics_path = version_dir / "metrics.csv"
     seen: tuple[int, int] | None = None
     print(f"watching {metrics_path}", flush=True)
@@ -356,7 +363,7 @@ def watch(version_dir: Path, interval: float) -> None:
             print(f"wrote {len(written)} plot(s) to {version_dir / PLOTS_DIRNAME}", flush=True)
         elif current is None:
             print(f"waiting for {metrics_path.name}", flush=True)
-        if not training_is_running() and current == seen:
+        if not training_is_running(model_name) and current == seen:
             print("training is not running; plot watcher stopped", flush=True)
             return
         time.sleep(interval)
@@ -366,7 +373,7 @@ def main() -> None:
     args = parse_args()
     version_dir = resolve_version_dir(args.model_name, args.version)
     if args.watch:
-        watch(version_dir, args.interval)
+        watch(version_dir, args.model_name, args.interval)
         return
     metrics_path = version_dir / "metrics.csv"
     if not metrics_path.is_file():

@@ -1,0 +1,10 @@
+Score each Ukrainian transcript for use as a speech-recognition label.
+Work with Ukrainian only.
+
+Mark from 0 to 5:
+0 — nonsense, not a usable Ukrainian utterance
+1 — mostly broken; only fragments can be understood
+2 — understandable, with many lexical, grammatical, or morphological errors
+3 — clear Ukrainian with several lexical, grammatical, or morphological errors
+4 — good Ukrainian with only minor errors of those kinds
+5 — a sound Ukrainian label with no lexical, grammatical, or morphological errors

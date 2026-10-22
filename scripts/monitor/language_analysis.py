@@ -1,13 +1,11 @@
 """Plot MMS language-id results against the Whisper labels in the metadata.
 
-Reads output/language_logits.csv. The predicted language is the argmax logit.
-Confidence is that language's softmax probability. Whisper labels in
+Reads meta/languages/language_logits.csv. The predicted language is the argmax
+logit. Confidence is that language's softmax probability. Whisper labels in
 meta/voa_ukr_meta.json use ISO 639-1 codes; MMS uses ISO 639-3, so the
 comparison maps Whisper codes before counting disagreements.
 
-Run from the repo root:
-
-    python src/language_analysis.py
+    python scripts/monitor/language_analysis.py
 """
 
 from __future__ import annotations
@@ -22,10 +20,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-ROOT = Path(__file__).resolve().parents[1]
-LOGITS_PATH = ROOT / "output" / "language_logits.csv"
+ROOT = Path(__file__).resolve().parents[2]
+LOGITS_PATH = ROOT / "meta" / "languages" / "language_logits.csv"
 META_PATH = ROOT / "meta" / "voa_ukr_meta.json"
-FIGURE_DIR = ROOT / "output" / "language_analysis"
+FIGURE_DIR = ROOT / "meta" / "figures"
 
 # Whisper language codes to the MMS-LID-256 codes used in the logit columns.
 WHISPER_TO_MMS = {
@@ -177,11 +175,15 @@ def load_whisper_languages(path: Path) -> pd.Series:
 
 def plot_language_pie(predictions: pd.DataFrame) -> None:
     counts = predictions["mms_language"].value_counts()
+    shown = counts.head(5)
+    other = int(counts.iloc[5:].sum())
+    if other:
+        shown = pd.concat([shown, pd.Series({"other": other})])
     plt.figure(figsize=(8, 6))
-    wedges, _ = plt.pie(counts.values, startangle=90)
+    wedges, _ = plt.pie(shown.values, startangle=90)
     plt.legend(
         wedges,
-        [f"{name} ({count})" for name, count in counts.items()],
+        [f"{name} ({count})" for name, count in shown.items()],
         title="MMS language",
         loc="center left",
         bbox_to_anchor=(1, 0.5),
