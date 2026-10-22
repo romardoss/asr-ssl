@@ -1,6 +1,6 @@
 """Plot Lightning metrics for one fine-tune version.
 
-Reads ``fine-tune/output/<model>/version_<N>/metrics.csv`` and writes PNG
+Reads ``output/fine-tune/<model>/version_<N>/metrics.csv`` and writes PNG
 files under ``plots/`` in that same version folder. With ``--watch``, the
 folder is refreshed whenever the CSV changes. This script only reads the
 metrics file; it does not start or modify training.
@@ -24,7 +24,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 FINE_TUNE_DIR = Path(__file__).resolve().parent
-OUTPUT_DIR = FINE_TUNE_DIR / "output"
+OUTPUT_DIR = FINE_TUNE_DIR.parent / "output" / "fine-tune"
 DEFAULT_MODEL_NAME = "model-whisper-uk"
 PLOTS_DIRNAME = "plots"
 
@@ -51,7 +51,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--model-name",
         default=DEFAULT_MODEL_NAME,
-        help="Directory name under fine-tune/output. Default: model-whisper-uk. Student runs use student_model-whisper-uk.",
+        help="Directory name under output/fine-tune. Default: model-whisper-uk. Student runs use student_model-whisper-uk.",
     )
     parser.add_argument(
         "--version",

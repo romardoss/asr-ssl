@@ -1,15 +1,15 @@
 """Split Ukrainian VOA clips so every row is at most 30 seconds.
 
-Reads ``meta/languages/ukrainian.csv``. A clip of 30 seconds or less is copied
+Reads ``datasets/voa-ukr/ukrainian.csv``. A clip of 30 seconds or less is copied
 unchanged. A longer clip is cut with Silero VAD: inside each 30 second window
 the cut is the latest speech boundary that is still under 30 seconds. If that
 window has no boundary, the cut is exactly 30 seconds. The next window starts
 at that cut.
 
 Audio bytes come from one VOA parquet shard (``--shard``). Progress for that
-shard is appended to ``meta/languages/vad-progress/<shard>.jsonl``, so several
+shard is appended to ``datasets/voa-ukr/vad-progress/<shard>.jsonl``, so several
 shards can run at once. ``chunk_orchestrator.py`` starts those processes and
-writes ``meta/languages/ukrainian_30s.csv``.
+writes ``datasets/voa-ukr/ukrainian_30s.csv``.
 
     python pseudo-labelling/vad-chunking/chunk.py --shard /path/to/train-00000-of-00195.parquet
 """
@@ -29,9 +29,9 @@ import pyarrow.parquet as pq
 from tqdm import tqdm
 
 ROOT = Path(__file__).resolve().parents[2]
-SOURCE_CSV = ROOT / "meta" / "languages" / "ukrainian.csv"
-OUTPUT_CSV = ROOT / "meta" / "languages" / "ukrainian_30s.csv"
-PROGRESS_DIR = ROOT / "meta" / "languages" / "vad-progress"
+SOURCE_CSV = ROOT / "datasets" / "voa-ukr" / "ukrainian.csv"
+OUTPUT_CSV = ROOT / "datasets" / "voa-ukr" / "ukrainian_30s.csv"
+PROGRESS_DIR = ROOT / "datasets" / "voa-ukr" / "vad-progress"
 DEFAULT_VOA_ROOT = Path("/mnt/data/rberehun/voa-ukr")
 MAX_SECONDS = 30.0
 VAD_SAMPLE_RATE = 16000

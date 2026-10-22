@@ -1,7 +1,7 @@
 """Run chunk.py once per VOA shard, with a cap on how many run at once.
 
 Each process handles one parquet shard. When every shard has finished, the
-per-shard progress files are merged into ``meta/languages/ukrainian_30s.csv``.
+per-shard progress files are merged into ``datasets/voa-ukr/ukrainian_30s.csv``.
 
     python pseudo-labelling/vad-chunking/chunk_orchestrator.py --max-processes 6
 """

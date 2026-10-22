@@ -66,7 +66,7 @@ from preprocess import Segment, decode, parse_timestamp, slice_audio
 
 MAX_AUDIO_SECONDS = SETTINGS.max_audio_seconds
 MAX_LABEL_TOKENS = SETTINGS.max_label_tokens
-OUTPUT_DIR = FINE_TUNE_DIR / "output"
+OUTPUT_DIR = FINE_TUNE_DIR.parent / "output" / "fine-tune"
 
 _PUNCTUATION = re.compile(r"[^\w\s']+", flags=re.UNICODE)
 _SPACES = re.compile(r"\s+")

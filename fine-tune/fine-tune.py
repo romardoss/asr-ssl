@@ -1,6 +1,6 @@
 """Fine-tune a Whisper decoder on Ukrainian Common Voice.
 
-The encoder stays frozen. Train/dev/test rows come from ``meta/common-voice``
+The encoder stays frozen. Train/dev/test rows come from ``datasets/common-voice/raw``
 and audio from ``paths.common_voice`` in ``config.yaml``. The starting
 checkpoint, GPUs, batch sizes, and training hyperparameters all come from
 that file.
@@ -9,7 +9,7 @@ Checkpoints (model, optimizer, and scheduler) are written to
 ``paths.checkpoints/<model-name>/`` at the end of every epoch and after
 every ``training.checkpoint_every`` fraction of the training batches. If
 ``last.ckpt`` is already there and ``training.resume`` is true, training
-resumes from it. Metrics and logs go to ``fine-tune/output/<model-name>/``.
+resumes from it. Metrics and logs go to ``output/fine-tune/<model-name>/``.
 
     python fine-tune/fine-tune.py
 """
@@ -65,7 +65,7 @@ from common_voice import checkpoint_root, load_splits
 
 MAX_AUDIO_SECONDS = SETTINGS.max_audio_seconds
 MAX_LABEL_TOKENS = SETTINGS.max_label_tokens
-OUTPUT_DIR = FINE_TUNE_DIR / "output"
+OUTPUT_DIR = FINE_TUNE_DIR.parent / "output" / "fine-tune"
 
 _PUNCTUATION = re.compile(r"[^\w\s']+", flags=re.UNICODE)
 _SPACES = re.compile(r"\s+")

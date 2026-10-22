@@ -1,7 +1,7 @@
 """Plot VOA-ukr metadata statistics.
 
 Same figures as notebooks/voa_ukr_meta_stats.ipynb. Reads
-meta/voa_ukr_meta.json and writes plots to output/eda. A partial checkpoint
+datasets/voa-ukr/voa_ukr_meta.json and writes plots to output/eda. A partial checkpoint
 is fine.
 
 Run from the repo root:
@@ -21,7 +21,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
-META_PATH = ROOT / "meta" / "voa_ukr_meta.json"
+META_PATH = Path(__file__).resolve().parents[2] / "datasets" / "voa-ukr" / "voa_ukr_meta.json"
 FIGURE_DIR = ROOT / "output" / "eda"
 
 

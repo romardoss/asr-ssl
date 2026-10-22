@@ -1,7 +1,7 @@
-"""Read Common Voice splits and write manifests under fine-tune/manifests.
+"""Read Common Voice splits and write manifests under datasets/common-voice.
 
-Uses ``paths.common_voice`` from ``config.yaml`` and the train/dev/test TSVs
-in ``meta/common-voice``. Each TSV line stays one clip.
+Uses ``paths.common_voice`` from ``config.yaml`` and the train/dev/test/unlabelled
+TSVs in ``datasets/common-voice/raw``. Each TSV line stays one clip.
 Sentences that contain a comma or a quote are written with normal CSV quoting.
 
     python fine-tune/read_common_voice.py
@@ -17,7 +17,7 @@ sys.path.insert(0, str(FINE_TUNE_DIR))
 
 from common_voice import common_voice_root, load_splits
 
-MANIFEST_DIR = FINE_TUNE_DIR / "manifests"
+MANIFEST_DIR = FINE_TUNE_DIR.parent / "datasets" / "common-voice"
 
 
 def main() -> None:

@@ -16,7 +16,7 @@ batch_size:
   # для суто тренування 8 забирає 20гб відеопам'яті, можна більше але обережно
   # dev and the test after fine-tuning; the optimizer is still in memory
   testing_after_train: 8
-  # testing/evaluate.py, no optimizer resident
+  # evaluation/evaluate.py, no optimizer resident
   # для суто тестування 32 забирає 11гб відеопам'яті, можна більше
   # для суто тестування 64 забирає 15.1гб відеопам'яті, можна більше
   testing: 64
@@ -45,23 +45,23 @@ data:
 pseudo_labelling:
   teacher_model: /mnt/data/rberehun/checkpoints/model-whisper-uk/model-whisper-uk-epoch00.ckpt
   voa: /mnt/data/rberehun/voa-ukr
-  ukrainian_meta: meta/languages/ukrainian.csv
-  timestamps: meta/languages/ukrainian_30s.csv
+  ukrainian_meta: datasets/voa-ukr/ukrainian.csv
+  timestamps: datasets/voa-ukr/ukrainian_30s.csv
   sample_rate: 16000
   batch_size: 64
   language: uk
   task: transcribe
   precision: bf16
   resume: true
-  output_dir: pseudo-labelling/output
+  output_dir: output/pseudo-labelling
 
 student:
   # Train on VOA slices. Dev during the epoch and the test after it are Common Voice.
   name: student_model-whisper-uk
   base: openai/whisper-medium
   init: openai/whisper-medium
-  marks: pseudo-labelling/output/model-whisper-uk-epoch00-01/label_marks.csv
-  labels: pseudo-labelling/output/model-whisper-uk-epoch00-01/labels.csv
+  marks: output/pseudo-labelling/model-whisper-uk-epoch00-01/label_marks.csv
+  labels: output/pseudo-labelling/model-whisper-uk-epoch00-01/labels.csv
   accepted_mark: [4, 5]
   voa: /mnt/data/rberehun/voa-ukr
   sample_rate: 16000

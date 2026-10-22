@@ -1,8 +1,8 @@
 """Plot MMS language-id results against the Whisper labels in the metadata.
 
-Reads meta/languages/language_logits.csv. The predicted language is the argmax
+Reads datasets/voa-ukr/mms-language-confidences.csv. The predicted language is the argmax
 logit. Confidence is that language's softmax probability. Whisper labels in
-meta/voa_ukr_meta.json use ISO 639-1 codes; MMS uses ISO 639-3, so the
+datasets/voa-ukr/voa_ukr_meta.json use ISO 639-1 codes; MMS uses ISO 639-3, so the
 comparison maps Whisper codes before counting disagreements.
 
     python scripts/monitor/language_analysis.py
@@ -21,9 +21,9 @@ import numpy as np
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[2]
-LOGITS_PATH = ROOT / "meta" / "languages" / "language_logits.csv"
-META_PATH = ROOT / "meta" / "voa_ukr_meta.json"
-FIGURE_DIR = ROOT / "meta" / "figures"
+LOGITS_PATH = ROOT / "datasets" / "voa-ukr" / "mms-language-confidences.csv"
+META_PATH = ROOT / "datasets" / "voa-ukr" / "voa_ukr_meta.json"
+FIGURE_DIR = ROOT / "analysis" / "voa-meta-plots"
 
 # Whisper language codes to the MMS-LID-256 codes used in the logit columns.
 WHISPER_TO_MMS = {

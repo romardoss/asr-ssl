@@ -1,6 +1,6 @@
 """Play clips whose MMS language disagrees with the Whisper label.
 
-Reads dataset/language_logits.csv and dataset/voa_ukr_meta.json. Prints both
+Reads datasets/voa-ukr/mms-language-confidences.csv and datasets/voa-ukr/voa_ukr_meta.json. Prints both
 labels, writes the MP3 from the local Hugging Face snapshot, and opens it in
 the default player. Enter plays the next clip. q stops.
 
@@ -18,9 +18,9 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
-LOGITS_PATH = ROOT / "dataset" / "language_logits.csv"
-META_PATH = ROOT / "dataset" / "voa_ukr_meta.json"
+REPO = Path(__file__).resolve().parents[2]
+LOGITS_PATH = REPO / "datasets" / "voa-ukr" / "mms-language-confidences.csv"
+META_PATH = REPO / "datasets" / "voa-ukr" / "voa_ukr_meta.json"
 DATASET_CACHE = Path.home() / ".cache" / "huggingface" / "hub" / "datasets--robinhad--VOA-ukr"
 
 # Whisper ISO 639-1 codes mapped onto the MMS ISO 639-3 columns in the logits file.

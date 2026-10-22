@@ -1,8 +1,8 @@
 """Split VOA metadata into Ukrainian-only and other-language CSVs.
 
 A clip is Ukrainian-only when both meta files label it Ukrainian:
-Whisper in meta/voa_ukr_meta.json (language == "uk") and MMS in
-meta/language_logits.csv (argmax logit == "ukr"). Every other clip
+Whisper in datasets/voa-ukr/voa_ukr_meta.json (language == "uk") and MMS in
+datasets/voa-ukr/mms-language-confidences.csv (argmax logit == "ukr"). Every other clip
 goes to the other-languages file.
 
 Run from the repo root:
@@ -17,12 +17,11 @@ from pathlib import Path
 
 import pandas as pd
 
-ROOT = Path(__file__).resolve().parents[1]
-META_DIR = ROOT / "meta"
-WHISPER_META_PATH = META_DIR / "voa_ukr_meta.json"
-LOGITS_PATH = META_DIR / "language_logits.csv"
-UKRAINIAN_PATH = META_DIR / "ukrainian.csv"
-OTHER_PATH = META_DIR / "other_languages.csv"
+VOA_DIR = Path(__file__).resolve().parents[2] / "datasets" / "voa-ukr"
+WHISPER_META_PATH = VOA_DIR / "voa_ukr_meta.json"
+LOGITS_PATH = VOA_DIR / "mms-language-confidences.csv"
+UKRAINIAN_PATH = VOA_DIR / "ukrainian.csv"
+OTHER_PATH = VOA_DIR / "other_languages.csv"
 
 WHISPER_UKRAINIAN = "uk"
 MMS_UKRAINIAN = "ukr"

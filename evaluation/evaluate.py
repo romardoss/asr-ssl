@@ -5,10 +5,10 @@ The model is a checkpoint or directory path, or ``model.id`` from
 checkpoint loaded on top of ``model.id``. GPUs, language, and the batch size
 come from that same file.
 
-Results and plots are written to ``testing/testing-<model>-XX/``.
+Results and plots are written to ``evaluation/testing-<model>-XX/``.
 
-    python testing/evaluate.py
-    python testing/evaluate.py --model /path/to/last.ckpt
+    python evaluation/evaluate.py
+    python evaluation/evaluate.py --model /path/to/last.ckpt
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 ROOT = Path(__file__).resolve().parents[1]
-TESTING_DIR = Path(__file__).resolve().parent
+EVALUATION_DIR = Path(__file__).resolve().parent
 FINE_TUNE_PATH = ROOT / "fine-tune" / "fine-tune.py"
 
 plt.rcParams.update(
@@ -108,12 +108,12 @@ def model_slug(kind: str, source: str) -> str:
 def next_run_dir(slug: str) -> Path:
     prefix = f"testing-{slug}-"
     numbers = []
-    for path in TESTING_DIR.glob(f"{prefix}*"):
+    for path in EVALUATION_DIR.glob(f"{prefix}*"):
         suffix = path.name.removeprefix(prefix)
         if path.is_dir() and suffix.isdigit():
             numbers.append(int(suffix))
     number = max(numbers) + 1 if numbers else 1
-    return TESTING_DIR / f"{prefix}{number:02d}"
+    return EVALUATION_DIR / f"{prefix}{number:02d}"
 
 
 def load_whisper(kind: str, source: str):

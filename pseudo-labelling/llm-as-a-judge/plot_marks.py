@@ -19,7 +19,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_MARKS = ROOT / "pseudo-labelling" / "output" / "model-whisper-uk-epoch00-01" / "label_marks.csv"
+DEFAULT_MARKS = ROOT / "output" / "pseudo-labelling" / "model-whisper-uk-epoch00-01" / "label_marks.csv"
 MARKS = tuple(range(6))
 COLORS = ("#9b2226", "#bb3e03", "#ca6702", "#ee9b00", "#90a955", "#4d7c0f")
 

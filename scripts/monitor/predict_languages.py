@@ -1,11 +1,11 @@
 """Run facebook/mms-lid-256 language identification on the local VOA-ukr snapshot.
 
-Audio stays in the parquet shards. Durations come from meta/voa_ukr_meta.json.
+Audio stays in the parquet shards. Durations come from datasets/voa-ukr/voa_ukr_meta.json.
 Each shard is packed into batches on its own, decoded in memory, then dropped.
 
 Example:
 
-    python src/predict_languages.py --output output/language_logits.csv --fp16
+    python src/predict_languages.py --output datasets/voa-ukr/mms-language-confidences.csv --fp16
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from voa_dataset import iter_shard_clips, shards
 
 DEFAULT_MODEL_ID = "facebook/mms-lid-256"
-META_PATH = ROOT / "meta" / "voa_ukr_meta.json"
+META_PATH = Path(__file__).resolve().parents[2] / "datasets" / "voa-ukr" / "voa_ukr_meta.json"
 MAX_CLIP_SECONDS = 5 * 60
 
 

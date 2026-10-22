@@ -2,7 +2,5 @@
 env/
 
 __pycache__/
-fine-tune/output/
-fine-tune/manifests/
-
-pseudo-labelling/output/model-whisper-uk-epoch00-01/labels.csv
+output/
+datasets/common-voice/*.csv

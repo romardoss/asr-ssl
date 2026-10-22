@@ -23,7 +23,7 @@ from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_LABELS = ROOT / "pseudo-labelling" / "output" / "model-whisper-uk-epoch00-01" / "labels.csv"
+DEFAULT_LABELS = ROOT / "output" / "pseudo-labelling" / "model-whisper-uk-epoch00-01" / "labels.csv"
 PROMPT_PATH = Path(__file__).resolve().parent / "prompt.txt"
 MARKS_NAME = "label_marks.csv"
 BATCH_SIZE = 16
