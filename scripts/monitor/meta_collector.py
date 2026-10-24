@@ -25,13 +25,13 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "src"))
+REPO = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from voa_dataset import DATASET_ID, SPLIT, iter_clips, num_examples
 
 META_PATH = Path(__file__).resolve().parents[2] / "datasets" / "voa-ukr" / "voa_ukr_meta.json"
-ENV_PATH = ROOT / ".env"
+ENV_PATH = REPO / ".env"
 WHISPER_MODEL = "medium"
 LANGUAGE_SECONDS = 120
 _ENV_REF = re.compile(
@@ -80,8 +80,8 @@ def apply_dotenv() -> bool:
     if not raw:
         return False
     base = dict(os.environ)
-    if not base.get("VIRTUAL_ENV") and (ROOT / "env").is_dir():
-        base["VIRTUAL_ENV"] = str(ROOT / "env")
+    if not base.get("VIRTUAL_ENV") and (REPO / "env").is_dir():
+        base["VIRTUAL_ENV"] = str(REPO / "env")
     for key, value in raw.items():
         expanded = expand_env(value, base)
         os.environ[key] = expanded

@@ -1,7 +1,9 @@
 """Fine-tune a Whisper student on Ukrainian VOA pseudo-labels.
 
-Training rows are the slices in ``student.labels`` whose judge mark in
-``student.marks`` is one of ``student.accepted_mark``. Audio is decoded and cut
+Training rows are the slices in ``student.labels``. When ``student.filter_marks``
+is true, a row is kept only if its judge mark in ``student.marks`` is one of
+``student.accepted_mark``. ``latest`` in either path means the newest file for
+``pseudo_labelling.teacher_model``. Audio is decoded and cut
 with the same functions as pseudo-labelling. Dev is scored every
 ``student.val_every`` fraction of an epoch, and the Common Voice test split
 is scored once after training. Checkpoints go to
@@ -139,7 +141,7 @@ def accepted_ids(path: Path, marks: tuple[int, ...]) -> set[str]:
     return {label_id for label_id, score in latest.items() if score in accepted}
 
 
-def load_slices(labels_path: Path, wanted: set[str]) -> list[SliceExample]:
+def load_slices(labels_path: Path, wanted: set[str] | None) -> list[SliceExample]:
     if not labels_path.is_file():
         raise SystemExit(f"Labels file not found: {labels_path}")
     found: dict[str, SliceExample] = {}
@@ -149,7 +151,9 @@ def load_slices(labels_path: Path, wanted: set[str]) -> list[SliceExample]:
         for row in csv.DictReader(handle):
             label_id = row["ID"]
             present.add(label_id)
-            if label_id not in wanted or label_id in found:
+            if wanted is not None and label_id not in wanted:
+                continue
+            if label_id in found:
                 continue
             text = row["text"].strip()
             if not text:
@@ -159,9 +163,10 @@ def load_slices(labels_path: Path, wanted: set[str]) -> list[SliceExample]:
             found[label_id] = SliceExample(label_id, row["path"], start, end, text)
     if empty:
         print(f"skipped {empty} accepted labels with empty text", flush=True)
-    absent = [label_id for label_id in wanted if label_id not in present]
-    if absent:
-        raise SystemExit(f"{len(absent)} accepted ids are missing from {labels_path}, first: {absent[0]}")
+    if wanted is not None:
+        absent = [label_id for label_id in wanted if label_id not in present]
+        if absent:
+            raise SystemExit(f"{len(absent)} accepted ids are missing from {labels_path}, first: {absent[0]}")
     return list(found.values())
 
 
@@ -576,10 +581,15 @@ def main() -> None:
         cfg.eval_batch_size,
     )
 
-    wanted = accepted_ids(cfg.marks, cfg.accepted_mark)
-    examples = load_slices(cfg.labels, wanted)
-    if not examples:
-        raise SystemExit(f"No labels with marks {', '.join(str(mark) for mark in cfg.accepted_mark)}")
+    if cfg.filter_marks:
+        wanted = accepted_ids(cfg.marks, cfg.accepted_mark)
+        examples = load_slices(cfg.labels, wanted)
+        if not examples:
+            raise SystemExit(f"No labels with marks {', '.join(str(mark) for mark in cfg.accepted_mark)}")
+    else:
+        examples = load_slices(cfg.labels, None)
+        if not examples:
+            raise SystemExit(f"No usable labels in {cfg.labels}")
     locations = locate_slices(voa_shards(cfg.voa), {example.path for example in examples})
     log.info("student slices: %d files: %d", len(examples), len({example.path for example in examples}))
 
@@ -696,6 +706,7 @@ def main() -> None:
             "base": cfg.base,
             "init": cfg.init,
             "language": cfg.language,
+            "filter_marks": cfg.filter_marks,
             "accepted_mark": list(cfg.accepted_mark),
             "devices": device_names or device_ids,
             "epochs": cfg.max_epochs,

@@ -170,6 +170,7 @@ class StudentSettings:
     init: str
     marks: Path
     labels: Path
+    filter_marks: bool
     accepted_mark: tuple[int, ...]
     voa: Path
     sample_rate: int
@@ -195,6 +196,56 @@ class StudentSettings:
     val_every: float
     max_audio_seconds: float
     max_label_tokens: int
+
+
+def labelling_runs(output_dir: Path, teacher: Path) -> list[Path]:
+    """Numbered pseudo-label directories for this teacher, oldest first."""
+    name = teacher.resolve().stem
+    slug = "".join(character if character.isalnum() or character in "._-" else "-" for character in name)
+    slug = slug.strip("-.") or "model"
+    prefix = f"{slug}-"
+    existing = []
+    if output_dir.is_dir():
+        for path in output_dir.glob(f"{prefix}*"):
+            suffix = path.name.removeprefix(prefix)
+            if path.is_dir() and suffix.isdigit():
+                existing.append(path)
+    existing.sort(key=lambda path: int(path.name.removeprefix(prefix)))
+    return existing
+
+
+def find_labelling_file(output_dir: Path, teacher: Path, filename: str) -> Path | None:
+    """Newest ``filename`` for this teacher, or ``None`` when labelling has not written it."""
+    for directory in reversed(labelling_runs(output_dir, teacher)):
+        candidate = directory / filename
+        if candidate.is_file() and candidate.stat().st_size > 0:
+            return candidate
+    return None
+
+
+def latest_labelling_file(output_dir: Path, teacher: Path, filename: str) -> Path:
+    """Newest ``filename`` written for this teacher under ``output_dir``."""
+    found = find_labelling_file(output_dir, teacher, filename)
+    if found is None:
+        raise SystemExit(
+            f"No {filename} for {teacher.name} under {output_dir}. Run pseudo-labelling first."
+        )
+    return found
+
+
+def _stored_path(section: dict, key: str, label: str, loaded: dict, filename: str) -> Path:
+    raw = _text(section, key, label)
+    if raw == "latest":
+        section_labels = _mapping(loaded, "pseudo_labelling")
+        return latest_labelling_file(
+            _path(section_labels, "output_dir", "pseudo_labelling.output_dir"),
+            _path(section_labels, "teacher_model", "pseudo_labelling.teacher_model"),
+            filename,
+        )
+    path = Path(raw)
+    if not path.is_absolute():
+        path = ROOT / path
+    return path
 
 
 def _path(section: dict, key: str, label: str) -> Path:
@@ -246,14 +297,21 @@ def load_student_settings(path: Path | None = None) -> StudentSettings:
     eval_data = _text(student, "eval_data", "student.eval_data")
     if eval_data != "common_voice":
         raise SystemExit("config.yaml student.eval_data must be common_voice")
+    filter_marks = _bool(student, "filter_marks", "student.filter_marks")
+    labels = _stored_path(student, "labels", "student.labels", loaded, "labels.csv")
+    if filter_marks:
+        marks = _stored_path(student, "marks", "student.marks", loaded, "label_marks.csv")
+    else:
+        marks = Path()
 
     return StudentSettings(
         checkpoints=Path(_text(paths, "checkpoints", "paths.checkpoints")),
         name=name,
         base=_text(student, "base", "student.base"),
         init=_text(student, "init", "student.init"),
-        marks=_path(student, "marks", "student.marks"),
-        labels=_path(student, "labels", "student.labels"),
+        marks=marks,
+        labels=labels,
+        filter_marks=filter_marks,
         accepted_mark=accepted,
         voa=_path(student, "voa", "student.voa"),
         sample_rate=_positive_int(student, "sample_rate", "student.sample_rate"),

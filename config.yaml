@@ -60,8 +60,11 @@ student:
   name: student_model-whisper-uk
   base: openai/whisper-medium
   init: openai/whisper-medium
-  marks: output/pseudo-labelling/model-whisper-uk-epoch00-01/label_marks.csv
-  labels: output/pseudo-labelling/model-whisper-uk-epoch00-01/labels.csv
+  # latest uses the newest labels.csv / label_marks.csv for pseudo_labelling.teacher_model
+  marks: latest
+  labels: latest
+  # false trains on every non-empty label and does not read marks
+  filter_marks: true
   accepted_mark: [4, 5]
   voa: /mnt/data/rberehun/voa-ukr
   sample_rate: 16000
@@ -90,3 +93,25 @@ student:
   val_every: 0.25
   max_audio_seconds: 30.0
   max_label_tokens: 448
+
+# run, skip, or skip_if_present. student and evaluate are run or skip.
+# skip_if_present leaves a step out when its output file is already on disk:
+# language -> pseudo_labelling.ukrainian_meta
+# timestamps -> pseudo_labelling.timestamps
+# label -> newest run under pseudo_labelling.output_dir already has labels.csv
+# clean -> label_marks.csv beside those labels
+pipeline:
+  language: skip_if_present
+  timestamps: skip_if_present
+  label: skip_if_present
+  clean: skip
+  student: run
+  evaluate: run
+  chunk_processes: 6
+  mms_model: facebook/mms-lid-256
+  mms_batch_size: 16
+  mms_fp16: true
+  judge_workers: 4
+  judge_retries: 3
+  # OpenRouter model. The API key stays in .env. Empty is allowed only when clean does not run.
+  judge_model: ""
