@@ -1,9 +1,9 @@
-"""Fine-tune a Whisper decoder on Ukrainian Common Voice.
+"""Fine-tune a Whisper decoder on the labelled Ukrainian speech in ``config.yaml``.
 
-The encoder stays frozen. Train/dev/test rows come from ``datasets/common-voice/raw``
-and audio from ``paths.common_voice`` in ``config.yaml``. The starting
-checkpoint, GPUs, batch sizes, and training hyperparameters all come from
-that file.
+The encoder stays frozen. ``data.train`` and ``data.dev`` are concatenated.
+``data.test`` is scored separately for each dataset and once combined. The
+starting checkpoint, GPUs, batch sizes, and training hyperparameters come
+from the same file.
 
 Checkpoints (model, optimizer, and scheduler) are written to
 ``paths.checkpoints/<model-name>/`` at the end of every epoch and after
@@ -47,11 +47,9 @@ import logging
 import random
 import re
 
-import av
 import jiwer
 import lightning as L
 import numpy as np
-import pandas as pd
 import torch
 import torchaudio
 from lightning.pytorch.callbacks import LearningRateMonitor
@@ -61,7 +59,8 @@ from torch.utils.data import DataLoader, Dataset
 from transformers import WhisperForConditionalGeneration, WhisperProcessor, get_linear_schedule_with_warmup
 
 from checkpoints import BatchFractionCheckpoint, resume_checkpoint
-from common_voice import checkpoint_root, load_splits
+from common_voice import checkpoint_root
+from speech_data import SpeechSplit, decode_audio, load_configured_splits as load_splits
 
 MAX_AUDIO_SECONDS = SETTINGS.max_audio_seconds
 MAX_LABEL_TOKENS = SETTINGS.max_label_tokens
@@ -69,6 +68,10 @@ OUTPUT_DIR = FINE_TUNE_DIR.parent / "output" / "fine-tune"
 
 _PUNCTUATION = re.compile(r"[^\w\s']+", flags=re.UNICODE)
 _SPACES = re.compile(r"\s+")
+
+
+def whisper_model() -> str:
+    return SETTINGS.model_id
 
 
 def normalize_text(text: str) -> str:
@@ -98,29 +101,37 @@ def corpus_metrics(references: list[str], hypotheses: list[str]) -> dict[str, fl
     }
 
 
+def metrics_by_source(
+    sources: list[str],
+    references: list[str],
+    hypotheses: list[str],
+    order: list[str],
+) -> dict[str, dict[str, float]]:
+    """Combined corpus metrics plus one entry for each dataset in ``order``."""
+    scored = {"combined": corpus_metrics(references, hypotheses)}
+    scored["combined"]["clips"] = float(len(references))
+    for name in order:
+        chosen = [
+            (reference, hypothesis)
+            for source, reference, hypothesis in zip(sources, references, hypotheses)
+            if source == name
+        ]
+        if not chosen:
+            continue
+        refs, hyps = zip(*chosen)
+        metrics = corpus_metrics(list(refs), list(hyps))
+        metrics["clips"] = float(len(chosen))
+        scored[name] = metrics
+    return scored
+
+
 def load_waveform(path: str) -> tuple[torch.Tensor, int]:
-    container = av.open(path)
-    try:
-        stream = container.streams.audio[0]
-        sample_rate = int(stream.sample_rate)
-        chunks = [frame.to_ndarray() for frame in container.decode(audio=0)]
-    finally:
-        container.close()
-    if not chunks:
-        raise RuntimeError(f"No audio frames in {path}")
-    audio = np.concatenate(chunks, axis=1)
-    audio = audio.mean(axis=0) if audio.shape[0] > 1 else audio[0]
-    if audio.dtype != np.float32:
-        if np.issubdtype(audio.dtype, np.integer):
-            audio = audio.astype(np.float32) / np.iinfo(audio.dtype).max
-        else:
-            audio = audio.astype(np.float32)
-    return torch.from_numpy(np.ascontiguousarray(audio)), sample_rate
+    return decode_audio(path)
 
 
 class WhisperASRDataset(Dataset):
-    def __init__(self, frame: pd.DataFrame, processor: WhisperProcessor, lang_token_id: int):
-        self.frame = frame.reset_index(drop=True)
+    def __init__(self, split: SpeechSplit, processor: WhisperProcessor, lang_token_id: int):
+        self.split = split
         self.feature_extractor = processor.feature_extractor
         self.tokenizer = processor.tokenizer
         self.sampling_rate = processor.feature_extractor.sampling_rate
@@ -130,11 +141,10 @@ class WhisperASRDataset(Dataset):
         self.eos_token_id = self.tokenizer.eos_token_id
 
     def __len__(self) -> int:
-        return len(self.frame)
+        return len(self.split)
 
     def __getitem__(self, index: int) -> dict:
-        row = self.frame.iloc[index]
-        waveform, sample_rate = load_waveform(row["audio_path"])
+        sentence, waveform, sample_rate = self.split.read(index)
         if sample_rate != self.sampling_rate:
             waveform = torchaudio.functional.resample(waveform, sample_rate, self.sampling_rate)
         max_samples = int(MAX_AUDIO_SECONDS * self.sampling_rate)
@@ -146,13 +156,14 @@ class WhisperASRDataset(Dataset):
             return_tensors="pt",
             return_attention_mask=True,
         )
-        text_ids = self.tokenizer(str(row["sentence"]), add_special_tokens=False).input_ids
+        text_ids = self.tokenizer(sentence, add_special_tokens=False).input_ids
         text_ids = text_ids[: MAX_LABEL_TOKENS - len(self.prefix_ids) - 1]
         labels = self.prefix_ids + text_ids + [self.eos_token_id]
         return {
             "input_features": extracted.input_features[0],
             "attention_mask": extracted.attention_mask[0],
             "labels": labels,
+            "source": self.split.source_at(index),
         }
 
 
@@ -165,6 +176,7 @@ def collate_fn(features: list[dict]) -> dict:
         "input_features": torch.stack([feature["input_features"] for feature in features]),
         "attention_mask": torch.stack([feature["attention_mask"] for feature in features]),
         "labels": labels,
+        "source": [feature["source"] for feature in features],
     }
 
 
@@ -204,10 +216,12 @@ class WhisperFineTuner(L.LightningModule):
         self.model.generation_config.forced_decoder_ids = None
         self.val_references: list[str] = []
         self.val_hypotheses: list[str] = []
+        self.test_sources: list[str] = []
         self.test_references: list[str] = []
         self.test_hypotheses: list[str] = []
+        self.test_source_order: list[str] = []
         self.val_metrics: dict[str, float] = {}
-        self.test_metrics: dict[str, float] = {}
+        self.test_metrics: dict[str, dict[str, float]] = {}
 
     def train(self, mode: bool = True):
         super().train(mode)
@@ -273,6 +287,7 @@ class WhisperFineTuner(L.LightningModule):
         ).loss
         self.log("test_loss", loss, prog_bar=True, on_epoch=True, sync_dist=True)
         references, hypotheses = self._transcribe(batch)
+        self.test_sources.extend(batch["source"])
         self.test_references.extend(references)
         self.test_hypotheses.extend(hypotheses)
         return loss
@@ -302,9 +317,37 @@ class WhisperFineTuner(L.LightningModule):
         self.val_hypotheses.clear()
 
     def on_test_epoch_end(self):
-        self.test_metrics = self._log_corpus("test", self.test_references, self.test_hypotheses)
+        sources, references, hypotheses = self._gather_test()
+        self.test_metrics = metrics_by_source(sources, references, hypotheses, self.test_source_order)
+        for dataset, metrics in self.test_metrics.items():
+            prefix = "test" if dataset == "combined" else f"test_{dataset}"
+            for name, value in metrics.items():
+                if name == "clips":
+                    continue
+                self.log(
+                    f"{prefix}_{name}",
+                    value,
+                    prog_bar=dataset == "combined" and name in {"wer", "cer"},
+                    sync_dist=True,
+                )
+        self.test_sources.clear()
         self.test_references.clear()
         self.test_hypotheses.clear()
+
+    def _gather_test(self) -> tuple[list[str], list[str], list[str]]:
+        if self.trainer.world_size == 1:
+            return self.test_sources, self.test_references, self.test_hypotheses
+        gathered_sources: list[list[str] | None] = [None] * self.trainer.world_size
+        gathered_refs: list[list[str] | None] = [None] * self.trainer.world_size
+        gathered_hyps: list[list[str] | None] = [None] * self.trainer.world_size
+        torch.distributed.all_gather_object(gathered_sources, self.test_sources)
+        torch.distributed.all_gather_object(gathered_refs, self.test_references)
+        torch.distributed.all_gather_object(gathered_hyps, self.test_hypotheses)
+        return (
+            [text for part in gathered_sources if part for text in part],
+            [text for part in gathered_refs if part for text in part],
+            [text for part in gathered_hyps if part for text in part],
+        )
 
     def configure_optimizers(self):
         parameters = [parameter for parameter in self.model.parameters() if parameter.requires_grad]
@@ -358,8 +401,9 @@ def main() -> None:
     )
 
     splits = load_splits()
-    for name, frame in splits.items():
-        log.info("%s clips: %d", name, len(frame))
+    for name, split in splits.items():
+        counts = ", ".join(f"{part.source} {len(part)}" for part in split.parts)
+        log.info("%s clips: %d (%s)", name, len(split), counts)
 
     processor = WhisperProcessor.from_pretrained(cfg.model_id)
     lang_token = f"<|{cfg.language}|>"
@@ -371,8 +415,8 @@ def main() -> None:
     model = WhisperForConditionalGeneration.from_pretrained(cfg.model_id)
     model.config.use_cache = False
 
-    def make_loader(frame: pd.DataFrame, batch_size: int, shuffle: bool) -> DataLoader:
-        dataset = WhisperASRDataset(frame, processor, lang_token_id)
+    def make_loader(split: SpeechSplit, batch_size: int, shuffle: bool) -> DataLoader:
+        dataset = WhisperASRDataset(split, processor, lang_token_id)
         return DataLoader(
             dataset,
             batch_size=batch_size,
@@ -397,6 +441,7 @@ def main() -> None:
         warmup_steps=cfg.warmup_steps,
         weight_decay=cfg.weight_decay,
     )
+    module.test_source_order = list(splits["test"].sources)
     frozen = sum(parameter.numel() for parameter in module.model.parameters() if not parameter.requires_grad)
     trainable = sum(parameter.numel() for parameter in module.model.parameters() if parameter.requires_grad)
     log.info("frozen encoder parameters: %d", frozen)
@@ -445,7 +490,10 @@ def main() -> None:
             "epochs": cfg.max_epochs,
             "frozen": "encoder",
             "trainable": "decoder",
-            "clips": {name: len(frame) for name, frame in splits.items()},
+            "clips": {
+                name: {"total": len(split), **{part.source: len(part) for part in split.parts}}
+                for name, split in splits.items()
+            },
             "checkpoints": str(ckpt_dir),
             "resumed_from": str(ckpt_path) if ckpt_path else None,
             "dev_before_training": baseline_metrics,
@@ -456,7 +504,8 @@ def main() -> None:
         write_results(destination, payload)
         log.info("wrote %s", destination)
         log.info("dev %s", module.val_metrics)
-        log.info("test %s", module.test_metrics)
+        for name, metrics in module.test_metrics.items():
+            log.info("test %s %s", name, metrics)
 
 
 if __name__ == "__main__":

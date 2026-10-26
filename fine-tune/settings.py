@@ -14,6 +14,11 @@ CONFIG_PATH = ROOT / "config.yaml"
 @dataclass(frozen=True)
 class Settings:
     common_voice: Path
+    fleurs: Path
+    opentts: Path
+    tg_voices: Path
+    ukr_dialects: Path
+    cv10_test: Path
     checkpoints: Path
     model_id: str
     model_name: str
@@ -38,6 +43,9 @@ class Settings:
     checkpoint_every: float
     max_audio_seconds: float
     max_label_tokens: int
+    train_data: tuple[str, ...]
+    dev_data: tuple[str, ...]
+    test_data: tuple[str, ...]
 
 
 def _mapping(data: dict, name: str) -> dict:
@@ -102,6 +110,22 @@ def _fraction(section: dict, key: str, label: str) -> float:
     return value
 
 
+def _names(section: dict, key: str, label: str) -> tuple[str, ...]:
+    value = _require(section, key, label)
+    if isinstance(value, str):
+        value = [value]
+    if not isinstance(value, list) or not value:
+        raise SystemExit(f"config.yaml {label} must be a non-empty list of dataset names")
+    names = []
+    for item in value:
+        if not isinstance(item, str) or not item.strip():
+            raise SystemExit(f"config.yaml {label} must contain dataset names")
+        names.append(item.strip())
+    if len(names) != len(set(names)):
+        raise SystemExit(f"config.yaml {label} lists a dataset more than once")
+    return tuple(names)
+
+
 def _limit(section: dict, key: str, label: str) -> int | float:
     value = _require(section, key, label)
     if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
@@ -133,6 +157,11 @@ def load_settings(path: Path | None = None) -> Settings:
 
     return Settings(
         common_voice=Path(_text(paths, "common_voice", "paths.common_voice")),
+        fleurs=Path(_text(paths, "fleurs", "paths.fleurs")),
+        opentts=Path(_text(paths, "opentts", "paths.opentts")),
+        tg_voices=Path(_text(paths, "tg_voices", "paths.tg_voices")),
+        ukr_dialects=Path(_text(paths, "ukr_dialects", "paths.ukr_dialects")),
+        cv10_test=Path(_text(paths, "cv10_test", "paths.cv10_test")),
         checkpoints=Path(_text(paths, "checkpoints", "paths.checkpoints")),
         model_id=_text(model, "id", "model.id"),
         model_name=_text(model, "name", "model.name"),
@@ -159,6 +188,9 @@ def load_settings(path: Path | None = None) -> Settings:
         checkpoint_every=_fraction(training, "checkpoint_every", "training.checkpoint_every"),
         max_audio_seconds=_positive_float(data, "max_audio_seconds", "data.max_audio_seconds"),
         max_label_tokens=_positive_int(data, "max_label_tokens", "data.max_label_tokens"),
+        train_data=_names(data, "train", "data.train"),
+        dev_data=_names(data, "dev", "data.dev"),
+        test_data=_names(data, "test", "data.test"),
     )
 
 

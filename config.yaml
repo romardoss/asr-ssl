@@ -1,5 +1,10 @@
 paths:
   common_voice: /mnt/data/rberehun/common-voice
+  fleurs: /mnt/data/rberehun/fleurs-uk
+  opentts: /mnt/data/rberehun/opentts-uk
+  tg_voices: /mnt/data/rberehun/tg-voices-uk
+  ukr_dialects: /mnt/data/rberehun/ukr-dialects
+  cv10_test: /mnt/data/rberehun/cv10-uk-testset-clean
   checkpoints: /mnt/data/rberehun/checkpoints
 
 model:
@@ -18,8 +23,8 @@ batch_size:
   testing_after_train: 8
   # evaluation/evaluate.py, no optimizer resident
   # для суто тестування 32 забирає 11гб відеопам'яті, можна більше
-  # для суто тестування 64 забирає 15.1гб відеопам'яті, можна більше
-  testing: 64
+  # для суто тестування 64 забирає 16гб відеопам'яті, можна більше
+  testing: 96
 
 training:
   learning_rate: 0.00001
@@ -41,6 +46,13 @@ training:
 data:
   max_audio_seconds: 30.0
   max_label_tokens: 448
+  # train and dev are concatenated. Test is scored once per dataset and once combined.
+  # common_voice, fleurs, and ukr_dialects have train, dev, and test.
+  # opentts and tg_voices are train only. cv10_test is test only.
+  # Broadcast Speech and YODAS2 stay out: their labels are unreliable.
+  train: [common_voice, fleurs, opentts, tg_voices, ukr_dialects]
+  dev: [common_voice, fleurs, ukr_dialects]
+  test: [common_voice, fleurs, ukr_dialects, cv10_test]
 
 pseudo_labelling:
   teacher_model: /mnt/data/rberehun/checkpoints/model-whisper-uk/model-whisper-uk-epoch00.ckpt

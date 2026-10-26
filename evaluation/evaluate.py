@@ -1,4 +1,4 @@
-"""Score a Whisper model on the Common Voice test split.
+"""Score a Whisper model on each configured test set and on all of them combined.
 
 The model is a checkpoint or directory path, or ``model.id`` from
 ``config.yaml`` when ``--model`` is omitted. A ``.ckpt`` file is a fine-tune
@@ -148,7 +148,7 @@ def language_token_id(processor, language: str) -> int:
 
 
 def evaluate_shard(
-    frame: pd.DataFrame,
+    frame,
     kind: str,
     source: str,
     language: str,
@@ -244,7 +244,7 @@ def _worker(
 
 
 def run_evaluation(
-    frame: pd.DataFrame,
+    frame,
     kind: str,
     source: str,
     language: str,
@@ -261,7 +261,7 @@ def run_evaluation(
     context = torch.multiprocessing.get_context("spawn")
     queue = context.Queue()
     processes = []
-    shards = [frame.iloc[index:: len(devices)].reset_index(drop=True) for index in devices]
+    shards = [frame.take_stride(index, len(devices)) for index in devices]
     for index, shard in zip(devices, shards):
         process = context.Process(
             target=_worker,
@@ -341,7 +341,7 @@ def write_plots(run_dir: Path, metrics: dict[str, float], references: list[str],
                 ha="center",
                 fontsize=12,
             )
-        axis.set_title("Test set error rates")
+        axis.set_title("Combined test set error rates")
         axis.set_ylabel("error rate (%)")
         axis.set_ylim(0, max(max(rate_values) * 1.25, 1))
         path = plots / "error_rates.png"
@@ -372,7 +372,7 @@ def write_plots(run_dir: Path, metrics: dict[str, float], references: list[str],
                 ha="center",
                 fontsize=12,
             )
-        axis.set_title("Test set word edits")
+        axis.set_title("Combined test set word edits")
         axis.set_ylabel("count")
         axis.set_ylim(0, max(max(edit_values) * 1.25, 1))
         path = plots / "edit_counts.png"
@@ -388,13 +388,56 @@ def write_plots(run_dir: Path, metrics: dict[str, float], references: list[str],
     if scores:
         figure, axis = plt.subplots()
         axis.hist(scores, bins=[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 200], color="#1f4e79")
-        axis.set_title("Utterance WER")
+        axis.set_title("Combined utterance WER")
         axis.set_xlabel("WER (%)")
         axis.set_ylabel("clips")
         path = plots / "utterance_wer.png"
         save_figure(figure, path)
         written.append(path)
     return written
+
+
+def write_dataset_chart(run_dir: Path, scored: dict[str, dict[str, float]]) -> Path | None:
+    names = [name for name in scored if "wer" in scored[name] and "cer" in scored[name]]
+    if len(names) < 2:
+        return None
+    positions = list(range(len(names)))
+    width = 0.36
+    figure, axis = plt.subplots(figsize=(max(8, len(names) * 1.6), 5.5))
+    wer_bars = axis.bar(
+        [position - width / 2 for position in positions],
+        [scored[name]["wer"] * 100 for name in names],
+        width=width,
+        label="WER",
+        color="#9b2226",
+    )
+    cer_bars = axis.bar(
+        [position + width / 2 for position in positions],
+        [scored[name]["cer"] * 100 for name in names],
+        width=width,
+        label="CER",
+        color="#1d4e89",
+    )
+    for bars in (wer_bars, cer_bars):
+        for bar in bars:
+            value = bar.get_height()
+            axis.annotate(
+                f"{value:.2f}",
+                xy=(bar.get_x() + bar.get_width() / 2, value),
+                xytext=(0, 4),
+                textcoords="offset points",
+                ha="center",
+                fontsize=9,
+            )
+    axis.set_xticks(positions, names)
+    axis.set_ylabel("error rate (%)")
+    axis.set_title("WER and CER by test set")
+    axis.legend()
+    peak = max(scored[name]["wer"] for name in names) * 100
+    axis.set_ylim(0, max(peak * 1.25, 1))
+    path = run_dir / "plots" / "error_rates_by_dataset.png"
+    save_figure(figure, path)
+    return path
 
 
 def main() -> None:
@@ -422,16 +465,20 @@ def main() -> None:
         batch_size,
     )
 
-    frame = ft.load_splits()["test"].reset_index(drop=True)
-    log.info("test clips: %d", len(frame))
+    frame = ft.load_splits()["test"]
+    counts = ", ".join(f"{part.source} {len(part)}" for part in frame.parts)
+    log.info("test clips: %d (%s)", len(frame), counts)
     torch.set_float32_matmul_precision("high")
     references, hypotheses, loss = run_evaluation(
         frame, kind, source, language, batch_size, run_dir / "test.log"
     )
-    metrics = ft.corpus_metrics(references, hypotheses)
+    datasets = [frame.source_at(index) for index in range(len(frame))]
+    scored = ft.metrics_by_source(datasets, references, hypotheses, list(frame.sources))
+    metrics = scored["combined"]
     predictions = pd.DataFrame(
         {
-            "audio_path": frame["audio_path"].tolist(),
+            "dataset": datasets,
+            "audio_path": [frame.example_id(index) for index in range(len(frame))],
             "reference": references,
             "hypothesis": hypotheses,
         }
@@ -444,16 +491,22 @@ def main() -> None:
         "base_model": ft.whisper_model() if kind == "ckpt" else source,
         "language": language,
         "split": "test",
-        "clips": len(frame),
+        "clips": {name: metrics_for["clips"] for name, metrics_for in scored.items()},
         "gpus": device_names,
         "eval_batch_size": batch_size,
         "loss": loss,
         "metrics": metrics,
+        "test_sets": scored,
     }
     results_path = run_dir / "results.json"
     results_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     written = write_plots(run_dir, metrics, references, hypotheses)
-    log.info("loss %.4f metrics %s", loss, metrics)
+    chart = write_dataset_chart(run_dir, scored)
+    if chart is not None:
+        written.append(chart)
+    log.info("loss %.4f", loss)
+    for name, dataset_metrics in scored.items():
+        log.info("test %s %s", name, dataset_metrics)
     log.info("wrote %s", results_path)
     log.info("wrote %s", predictions_path)
     for path in written:

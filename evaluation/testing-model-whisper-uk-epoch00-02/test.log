@@ -1,0 +1,2 @@
+2026-10-26 21:11:07,930 INFO model=/mnt/data/rberehun/checkpoints/model-whisper-uk/model-whisper-uk-epoch00.ckpt kind=ckpt gpus=['nvidia1'] CUDA_VISIBLE_DEVICES=1 testing_batch=64
+2026-10-26 21:11:09,314 INFO test clips: 18345 (common_voice 10956, fleurs 750, ukr_dialects 3435, cv10_test 3204)
