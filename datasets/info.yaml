@@ -1,0 +1,102 @@
+datasets:
+  - name: Common Voice
+    version: "27.0"
+    license: CC0-1.0
+    link: https://mozilladatacollective.com/datasets/cmu5wgebl00d0nq07ktip1i6c
+    splits: [train, dev, test]
+    hours: 121.37
+    labelled_hours: 108.75
+    unlabelled_hours: 12.62
+  - name: VOA
+    # Unpublished, so there is no version, license, or public link.
+    version:
+    license:
+    link:
+    splits: [train]
+    hours: 2313.36
+    labelled_hours: 0
+    unlabelled_hours: 2313.36
+  - name: FLEURS
+    version:
+    license: CC-BY-4.0
+    link: https://huggingface.co/datasets/google/fleurs
+    splits: [train, validation, test]
+    hours: 12.24
+    labelled_hours: 12.24
+    unlabelled_hours: 0
+  - name: OpenTTS-UK
+    version:
+    link: https://huggingface.co/datasets/Yehor/opentts-uk
+    splits: [train]
+    hours: 37.28
+    labelled_hours: 37.28
+    unlabelled_hours: 0
+    subsets:
+      - name: kateryna
+        # Non-commercial use. Commercial use needs permission from the voice talent.
+        license: CC-BY-NC-2.0
+        hours: 2.83
+      - name: lada
+        license: Apache-2.0
+        hours: 10.62
+      - name: mykyta
+        license: Apache-2.0
+        hours: 9.07
+      - name: oleksa
+        # The voice page does not name a separate license. This is the repository license.
+        license: Apache-2.0
+        hours: 6.22
+      - name: tetiana
+        license: Apache-2.0
+        hours: 8.54
+  - name: TG Voices UK
+    version:
+    license: CC0-1.0
+    link: https://huggingface.co/datasets/Yehor/tg-voices-uk
+    splits: [train]
+    hours: 13.30
+    labelled_hours: 13.30
+    unlabelled_hours: 0
+  - name: Ukrainian Dialects
+    version:
+    license: CC-BY-4.0
+    link: https://huggingface.co/datasets/KSE-RESEARCH-Group/ukr-dialects-audio-dataset
+    splits: [train, validation, test]
+    hours: 60.63
+    labelled_hours: 60.63
+    unlabelled_hours: 0
+  - name: Common Voice 10 Ukrainian test set
+    version: "10.0"
+    license: MPL-2.0
+    link: https://huggingface.co/datasets/Yehor/cv10-uk-testset-clean
+    splits: [test]
+    hours: 4.63
+    labelled_hours: 4.63
+    unlabelled_hours: 0
+  - name: Broadcast Speech UK
+    # Bad labels, possibly pseudo-labels. Not for fine-tuning. Audio can be used for pseudo-labelling.
+    version:
+    license:
+    link: https://huggingface.co/datasets/Yehor/broadcast-speech-uk
+    splits: [train]
+    hours: 300.18
+    labelled_hours: 0
+    unlabelled_hours: 300.18
+  - name: YODAS2 uk000
+    # Bad labels, possibly pseudo-labels. Not for fine-tuning. Audio can be used for pseudo-labelling.
+    version:
+    license: CC-BY-3.0
+    link: https://huggingface.co/datasets/espnet/yodas2/tree/main/data/uk000
+    splits: [train]
+    hours: 629.35
+    labelled_hours: 0
+    unlabelled_hours: 629.35
+  - name: YODAS2 uk100
+    # Bad labels, possibly pseudo-labels. Not for fine-tuning. Audio can be used for pseudo-labelling.
+    version:
+    license: CC-BY-3.0
+    link: https://huggingface.co/datasets/espnet/yodas2/tree/main/data/uk100
+    splits: [train]
+    hours: 518.62
+    labelled_hours: 0
+    unlabelled_hours: 518.62
