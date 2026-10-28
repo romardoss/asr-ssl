@@ -665,8 +665,26 @@ def main() -> None:
     log.info("trainable decoder parameters: %d", trainable)
 
     ckpt_dir = cfg.checkpoints / cfg.name
-    checkpoint_callback = BatchFractionCheckpoint(ckpt_dir, cfg.name, fraction=cfg.checkpoint_every)
+    ckpt_path = resume_checkpoint(ckpt_dir, cfg.resume)
+    train_meta = {
+        "model": cfg.name,
+        "base": cfg.base,
+        "init": cfg.init,
+        "language": cfg.language,
+        "learning_rate": cfg.learning_rate,
+        "seed": cfg.seed,
+        "max_epochs": cfg.max_epochs,
+        "frozen": "encoder",
+        "trainable": "decoder",
+        "filter_marks": cfg.filter_marks,
+        "accepted_mark": list(cfg.accepted_mark),
+        "resumed_from": ckpt_path.name if ckpt_path else None,
+    }
+    checkpoint_callback = BatchFractionCheckpoint(
+        ckpt_dir, cfg.name, fraction=cfg.checkpoint_every, meta=train_meta
+    )
     logger = CSVLogger(save_dir=str(OUTPUT_DIR), name=cfg.name)
+    checkpoint_callback.metrics_dir = Path(logger.log_dir)
     strategy = DDPStrategy(find_unused_parameters=False) if len(device_ids) > 1 else "auto"
     trainer = L.Trainer(
         max_epochs=cfg.max_epochs,
@@ -688,7 +706,6 @@ def main() -> None:
         use_distributed_sampler=False,
     )
 
-    ckpt_path = resume_checkpoint(ckpt_dir, cfg.resume)
     baseline_metrics: dict[str, float] = {}
     if ckpt_path is not None:
         log.info("resuming from %s", ckpt_path)

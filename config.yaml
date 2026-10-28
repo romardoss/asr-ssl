@@ -24,7 +24,8 @@ batch_size:
   # evaluation/evaluate.py, no optimizer resident
   # для суто тестування 32 забирає 11гб відеопам'яті, можна більше
   # для суто тестування 64 забирає 16гб відеопам'яті, можна більше
-  testing: 96
+  # 96 - OOM
+  testing: 64
 
 training:
   learning_rate: 0.00001

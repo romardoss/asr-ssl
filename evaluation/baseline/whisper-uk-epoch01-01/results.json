@@ -1,0 +1,99 @@
+{
+  "model": "/mnt/data/rberehun/checkpoints/model-whisper-uk_01/model-whisper-uk-epoch01.ckpt",
+  "kind": "ckpt",
+  "base_model": "openai/whisper-medium",
+  "language": "uk",
+  "split": "test",
+  "clips": {
+    "combined": 18345.0,
+    "common_voice": 10956.0,
+    "fleurs": 750.0,
+    "ukr_dialects": 3435.0,
+    "cv10_test": 3204.0
+  },
+  "gpus": [
+    "nvidia1"
+  ],
+  "eval_batch_size": 64,
+  "loss": 0.44059811319623676,
+  "metrics": {
+    "wer": 0.3260495675521845,
+    "cer": 0.13890964274904807,
+    "mer": 0.29965600568585643,
+    "wil": 0.4494247545259771,
+    "wip": 0.5505752454740229,
+    "substitutions": 33069.0,
+    "deletions": 5396.0,
+    "insertions": 14237.0,
+    "hits": 123173.0,
+    "n": 18345.0,
+    "clips": 18345.0
+  },
+  "test_sets": {
+    "combined": {
+      "wer": 0.3260495675521845,
+      "cer": 0.13890964274904807,
+      "mer": 0.29965600568585643,
+      "wil": 0.4494247545259771,
+      "wip": 0.5505752454740229,
+      "substitutions": 33069.0,
+      "deletions": 5396.0,
+      "insertions": 14237.0,
+      "hits": 123173.0,
+      "n": 18345.0,
+      "clips": 18345.0
+    },
+    "common_voice": {
+      "wer": 0.17540250901518614,
+      "cer": 0.0434540498190224,
+      "mer": 0.1721649613021424,
+      "wil": 0.2896104728747596,
+      "wip": 0.7103895271252404,
+      "substitutions": 10956.0,
+      "deletions": 1377.0,
+      "insertions": 1481.0,
+      "hits": 66423.0,
+      "n": 10956.0,
+      "clips": 10956.0
+    },
+    "fleurs": {
+      "wer": 0.11339917349583246,
+      "cer": 0.03372118414074929,
+      "mer": 0.11223570190641248,
+      "wil": 0.19623809933477931,
+      "wip": 0.8037619006652207,
+      "substitutions": 1337.0,
+      "deletions": 134.0,
+      "insertions": 148.0,
+      "hits": 12806.0,
+      "n": 750.0,
+      "clips": 750.0
+    },
+    "ukr_dialects": {
+      "wer": 0.738717859016967,
+      "cer": 0.42558026160316637,
+      "mer": 0.5831003417210314,
+      "wil": 0.7654298185196009,
+      "wip": 0.2345701814803991,
+      "substitutions": 18028.0,
+      "deletions": 3552.0,
+      "insertions": 12206.0,
+      "hits": 24156.0,
+      "n": 3435.0,
+      "clips": 3435.0
+    },
+    "cv10_test": {
+      "wer": 0.15230224321133412,
+      "cer": 0.03399486764664863,
+      "mer": 0.1496712646641743,
+      "wil": 0.25354938447940134,
+      "wip": 0.7464506155205987,
+      "substitutions": 2748.0,
+      "deletions": 333.0,
+      "insertions": 402.0,
+      "hits": 19788.0,
+      "n": 3204.0,
+      "clips": 3204.0
+    }
+  }
+}

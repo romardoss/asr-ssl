@@ -8,9 +8,12 @@ later ``Trainer.fit(ckpt_path=...)`` continues from the same step.
 from __future__ import annotations
 
 import math
+import re
 from pathlib import Path
 
 import lightning as L
+
+from run_meta import copy_config, write_meta
 
 
 def latest_checkpoint(directory: Path) -> Path | None:
@@ -37,6 +40,32 @@ def resume_checkpoint(directory: Path, enabled: bool) -> Path | None:
     return latest_checkpoint(directory)
 
 
+def numbered_checkpoint_dir(root: Path, model_name: str, resume: bool) -> Path:
+    """Return ``<root>/<model_name>_01``, then ``_02``, and so on.
+
+    The unnumbered ``<model_name>`` directory is left untouched. With
+    ``resume``, training continues in the newest numbered directory that
+    already holds a checkpoint.
+    """
+    root = Path(root)
+    pattern = re.compile(rf"^{re.escape(model_name)}_(\d+)$")
+    found: list[tuple[int, Path]] = []
+    if root.is_dir():
+        for path in root.iterdir():
+            match = pattern.match(path.name)
+            if path.is_dir() and match:
+                found.append((int(match.group(1)), path))
+    found.sort()
+    if resume:
+        for _number, path in reversed(found):
+            if latest_checkpoint(path) is not None:
+                return path
+        if found and latest_checkpoint(found[-1][1]) is None:
+            return found[-1][1]
+    number = found[-1][0] + 1 if found else 1
+    return root / f"{model_name}_{number:02d}"
+
+
 class BatchFractionCheckpoint(L.Callback):
     """Save a full training checkpoint every ``fraction`` of an epoch, and at epoch end.
 
@@ -44,11 +73,23 @@ class BatchFractionCheckpoint(L.Callback):
     example ``model-whisper-uk-epoch00-batch05pct.ckpt``.
     """
 
-    def __init__(self, dirpath: Path, model_name: str, fraction: float = 0.05):
+    def __init__(self, dirpath: Path, model_name: str, fraction: float = 0.05, meta: dict | None = None):
         self.dirpath = Path(dirpath)
         self.model_name = model_name
         self.fraction = fraction
+        self.meta = dict(meta or {})
+        self.metrics_dir: Path | None = None
         self._targets: dict[int, int] = {}
+
+    def _publish(self, fields: dict) -> None:
+        payload = dict(fields)
+        payload["checkpoint_dir"] = str(self.dirpath.resolve())
+        copy_config(self.dirpath, replace=True)
+        write_meta(self.dirpath, payload)
+        if self.metrics_dir is not None:
+            copy_config(self.metrics_dir, replace=True)
+            write_meta(self.metrics_dir, payload)
+        self.meta = payload
 
     def _batches_this_epoch(self, trainer: L.Trainer) -> int:
         count = trainer.num_training_batches
@@ -62,6 +103,7 @@ class BatchFractionCheckpoint(L.Callback):
     def on_train_start(self, trainer: L.Trainer, pl_module: L.LightningModule) -> None:
         if trainer.is_global_zero:
             self.dirpath.mkdir(parents=True, exist_ok=True)
+            self._publish(self.meta)
 
     def on_train_epoch_start(self, trainer: L.Trainer, pl_module: L.LightningModule) -> None:
         batches = self._batches_this_epoch(trainer)
@@ -84,17 +126,25 @@ class BatchFractionCheckpoint(L.Callback):
         if percent is None:
             return
         filename = f"{self.model_name}-epoch{trainer.current_epoch:02d}-batch{percent:02d}pct.ckpt"
-        self._save(trainer, self.dirpath / filename)
+        self._save(trainer, self.dirpath / filename, trainer.current_epoch, percent)
 
     def on_train_epoch_end(self, trainer: L.Trainer, pl_module: L.LightningModule) -> None:
         filename = f"{self.model_name}-epoch{trainer.current_epoch:02d}.ckpt"
-        self._save(trainer, self.dirpath / filename)
+        self._save(trainer, self.dirpath / filename, trainer.current_epoch, None)
 
-    def _save(self, trainer: L.Trainer, path: Path) -> None:
+    def _save(self, trainer: L.Trainer, path: Path, epoch: int, batch_percent: int | None) -> None:
         trainer.save_checkpoint(str(path), weights_only=False)
         if trainer.is_global_zero:
             last = self.dirpath / "last.ckpt"
             if last.is_symlink() or last.exists():
                 last.unlink()
             last.symlink_to(path.name)
+            payload = dict(self.meta)
+            payload["checkpoint"] = path.name
+            payload["epoch"] = int(epoch)
+            if batch_percent is None:
+                payload.pop("batch_percent", None)
+            else:
+                payload["batch_percent"] = int(batch_percent)
+            self._publish(payload)
         trainer.strategy.barrier()

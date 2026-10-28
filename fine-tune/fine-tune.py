@@ -6,10 +6,11 @@ starting checkpoint, GPUs, batch sizes, and training hyperparameters come
 from the same file.
 
 Checkpoints (model, optimizer, and scheduler) are written to
-``paths.checkpoints/<model-name>/`` at the end of every epoch and after
-every ``training.checkpoint_every`` fraction of the training batches. If
-``last.ckpt`` is already there and ``training.resume`` is true, training
-resumes from it. Metrics and logs go to ``output/fine-tune/<model-name>/``.
+``paths.checkpoints/<model-name>_01/``, then ``_02``, and so on. The
+unnumbered ``<model-name>`` directory is left as it is. If ``last.ckpt`` is
+already in the newest numbered directory and ``training.resume`` is true,
+training resumes from it. Metrics and logs go to
+``output/fine-tune/<model-name>/``. Plots are written there when training ends.
 
     python fine-tune/fine-tune.py
 """
@@ -58,7 +59,8 @@ from lightning.pytorch.strategies import DDPStrategy
 from torch.utils.data import DataLoader, Dataset
 from transformers import WhisperForConditionalGeneration, WhisperProcessor, get_linear_schedule_with_warmup
 
-from checkpoints import BatchFractionCheckpoint, resume_checkpoint
+from checkpoints import BatchFractionCheckpoint, numbered_checkpoint_dir, resume_checkpoint
+from plot_metrics import write_plots
 from common_voice import checkpoint_root
 from speech_data import SpeechSplit, decode_audio, load_configured_splits as load_splits
 
@@ -447,9 +449,25 @@ def main() -> None:
     log.info("frozen encoder parameters: %d", frozen)
     log.info("trainable decoder parameters: %d", trainable)
 
-    ckpt_dir = checkpoint_root() / cfg.model_name
-    checkpoint_callback = BatchFractionCheckpoint(ckpt_dir, cfg.model_name, fraction=cfg.checkpoint_every)
+    ckpt_dir = numbered_checkpoint_dir(checkpoint_root(), cfg.model_name, cfg.resume)
+    log.info("checkpoint directory %s", ckpt_dir)
+    ckpt_path = resume_checkpoint(ckpt_dir, cfg.resume)
+    train_meta = {
+        "model": cfg.model_name,
+        "model_id": cfg.model_id,
+        "language": cfg.language,
+        "learning_rate": cfg.learning_rate,
+        "seed": cfg.seed,
+        "max_epochs": cfg.max_epochs,
+        "frozen": "encoder",
+        "trainable": "decoder",
+        "resumed_from": ckpt_path.name if ckpt_path else None,
+    }
+    checkpoint_callback = BatchFractionCheckpoint(
+        ckpt_dir, cfg.model_name, fraction=cfg.checkpoint_every, meta=train_meta
+    )
     logger = CSVLogger(save_dir=str(OUTPUT_DIR), name=cfg.model_name)
+    checkpoint_callback.metrics_dir = Path(logger.log_dir)
     strategy = DDPStrategy(find_unused_parameters=False) if len(device_ids) > 1 else "auto"
     trainer = L.Trainer(
         max_epochs=cfg.max_epochs,
@@ -469,7 +487,6 @@ def main() -> None:
         enable_progress_bar=True,
     )
 
-    ckpt_path = resume_checkpoint(ckpt_dir, cfg.resume)
     baseline_metrics: dict[str, float] = {}
     if ckpt_path is not None:
         log.info("resuming from %s", ckpt_path)
@@ -503,6 +520,9 @@ def main() -> None:
         destination = output_dir / "results.json"
         write_results(destination, payload)
         log.info("wrote %s", destination)
+        logger.save()
+        for path in write_plots(Path(logger.log_dir)):
+            log.info("wrote %s", path)
         log.info("dev %s", module.val_metrics)
         for name, metrics in module.test_metrics.items():
             log.info("test %s %s", name, metrics)

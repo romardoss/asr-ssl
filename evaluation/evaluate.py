@@ -5,7 +5,9 @@ The model is a checkpoint or directory path, or ``model.id`` from
 checkpoint loaded on top of ``model.id``. GPUs, language, and the batch size
 come from that same file.
 
-Results and plots are written to ``evaluation/testing-<model>-XX/``.
+Results and plots are written to ``evaluation/<model>-XX/``.
+A checkpoint test also stores ``config.yaml`` and ``meta.yaml`` there.
+An original Whisper id stores ``meta.yaml`` with the model name.
 
     python evaluation/evaluate.py
     python evaluation/evaluate.py --model /path/to/last.ckpt
@@ -62,6 +64,7 @@ def _load_fine_tune():
 
 ft = _load_fine_tune()
 
+import run_meta
 import jiwer
 import pandas as pd
 import torch
@@ -106,7 +109,8 @@ def model_slug(kind: str, source: str) -> str:
 
 
 def next_run_dir(slug: str) -> Path:
-    prefix = f"testing-{slug}-"
+    slug = slug.removeprefix("model-") or slug
+    prefix = f"{slug}-"
     numbers = []
     for path in EVALUATION_DIR.glob(f"{prefix}*"):
         suffix = path.name.removeprefix(prefix)
@@ -386,8 +390,19 @@ def write_plots(run_dir: Path, metrics: dict[str, float], references: list[str],
             continue
         scores.append(jiwer.wer(normalized_ref, ft.normalize_text(hypothesis)) * 100)
     if scores:
+        # 200 stays in the last 10-point bin. Anything above it is a separate 200+ bar.
+        regular = [score for score in scores if score <= 200]
+        overflow = sum(score > 200 for score in scores)
         figure, axis = plt.subplots()
-        axis.hist(scores, bins=[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 200], color="#1f4e79")
+        axis.hist(regular, bins=list(range(0, 201, 10)), color="#1f4e79")
+        overflow_left = 228
+        overflow_width = 10
+        axis.bar(overflow_left, overflow, width=overflow_width, align="edge", color="#1f4e79", linewidth=0)
+        ticks = list(range(0, 201, 25))
+        overflow_center = overflow_left + overflow_width / 2
+        axis.set_xticks(ticks + [overflow_center])
+        axis.set_xticklabels([str(tick) for tick in ticks] + ["200+"])
+        axis.set_xlim(0, overflow_center + 22)
         axis.set_title("Combined utterance WER")
         axis.set_xlabel("WER (%)")
         axis.set_ylabel("clips")
@@ -448,6 +463,16 @@ def main() -> None:
     slug = model_slug(kind, source)
     run_dir = next_run_dir(slug)
     run_dir.mkdir(parents=True, exist_ok=False)
+    meta, config_source = run_meta.test_record(
+        kind,
+        source,
+        ft.SETTINGS.checkpoints,
+        ft.whisper_model(),
+        language,
+    )
+    if config_source is not None:
+        run_meta.copy_config(run_dir, config_source, replace=True)
+    run_meta.write_meta(run_dir, meta)
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(message)s",
