@@ -40,14 +40,20 @@ def resume_checkpoint(directory: Path, enabled: bool) -> Path | None:
     return latest_checkpoint(directory)
 
 
-def numbered_checkpoint_dir(root: Path, model_name: str, resume: bool) -> Path:
-    """Return ``<root>/<model_name>_01``, then ``_02``, and so on.
+def checkpoint_filename(path: Path) -> str:
+    """Filename of a checkpoint, following a ``last.ckpt`` symlink."""
+    if path.is_symlink():
+        return path.readlink().name
+    return path.name
 
-    The unnumbered ``<model_name>`` directory is left untouched. With
-    ``resume``, training continues in the newest numbered directory that
-    already holds a checkpoint.
-    """
-    root = Path(root)
+
+def is_final_epoch_checkpoint(path: Path, max_epochs: int) -> bool:
+    """True when ``path`` is the save from the last epoch, not a mid-epoch save."""
+    match = re.search(r"-epoch(\d+)\.ckpt$", checkpoint_filename(path))
+    return match is not None and int(match.group(1)) == max_epochs - 1
+
+
+def _numbered_dirs(root: Path, model_name: str) -> list[tuple[int, Path]]:
     pattern = re.compile(rf"^{re.escape(model_name)}_(\d+)$")
     found: list[tuple[int, Path]] = []
     if root.is_dir():
@@ -56,6 +62,65 @@ def numbered_checkpoint_dir(root: Path, model_name: str, resume: bool) -> Path:
             if path.is_dir() and match:
                 found.append((int(match.group(1)), path))
     found.sort()
+    return found
+
+
+def student_checkpoint_dirs(root: Path, model_name: str) -> list[Path]:
+    """Unnumbered ``<model_name>`` first, then ``_01``, ``_02``, and so on."""
+    root = Path(root)
+    numbered = [path for _number, path in _numbered_dirs(root, model_name)]
+    plain = root / model_name
+    if plain.is_dir():
+        return [plain, *numbered]
+    return numbered
+
+
+def next_student_checkpoint_dir(root: Path, model_name: str) -> Path:
+    root = Path(root)
+    found = _numbered_dirs(root, model_name)
+    number = found[-1][0] + 1 if found else 1
+    return root / f"{model_name}_{number:02d}"
+
+
+def student_checkpoint_run(
+    root: Path, model_name: str, resume: bool, max_epochs: int
+) -> tuple[Path, Path | None]:
+    """Return the student directory and the checkpoint to resume, if any.
+
+    ``resume`` continues only an unfinished newest directory. A directory whose
+    ``last.ckpt`` is ``epoch{max_epochs - 1}.ckpt`` is a finished experiment, so
+    the next run starts in a new numbered directory from the initial weights.
+    ``resume`` false does that too. The unnumbered directory is the oldest run.
+    """
+    if max_epochs < 1:
+        raise ValueError(f"max_epochs must be positive, got {max_epochs}")
+    directories = student_checkpoint_dirs(root, model_name)
+    if resume and directories:
+        newest = directories[-1]
+        checkpoint = latest_checkpoint(newest)
+        if checkpoint is None or not is_final_epoch_checkpoint(checkpoint, max_epochs):
+            return newest, checkpoint
+    return next_student_checkpoint_dir(root, model_name), None
+
+
+def latest_student_checkpoint(root: Path, model_name: str) -> Path | None:
+    """Newest student checkpoint, including one from a finished run."""
+    for directory in reversed(student_checkpoint_dirs(root, model_name)):
+        checkpoint = latest_checkpoint(directory)
+        if checkpoint is not None:
+            return checkpoint
+    return None
+
+
+def numbered_checkpoint_dir(root: Path, model_name: str, resume: bool) -> Path:
+    """Return ``<root>/<model_name>_01``, then ``_02``, and so on.
+
+    The unnumbered ``<model_name>`` directory is left untouched. With
+    ``resume``, training continues in the newest numbered directory that
+    already holds a checkpoint.
+    """
+    root = Path(root)
+    found = _numbered_dirs(root, model_name)
     if resume:
         for _number, path in reversed(found):
             if latest_checkpoint(path) is not None:

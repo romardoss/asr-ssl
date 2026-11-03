@@ -7,8 +7,11 @@ is true, a row is kept only if its judge mark in ``student.marks`` is one of
 with the same functions as pseudo-labelling. Dev is scored every
 ``student.val_every`` fraction of an epoch, and the Common Voice test split
 is scored once after training. Checkpoints go to
-``paths.checkpoints/<student.name>/`` every ``student.checkpoint_every``
-fraction of an epoch. The encoder stays frozen.
+``paths.checkpoints/<student.name>_01/``, then ``_02``, and so on, every
+``student.checkpoint_every`` fraction of an epoch. ``student.resume`` continues
+an unfinished newest directory. A finished run starts the next directory from
+``student.init``. The unnumbered ``<student.name>`` directory is the oldest
+run and is left in place. The encoder stays frozen.
 
     python fine-tune/fine-tune-student.py
 """
@@ -60,7 +63,7 @@ from torch.utils.data import DataLoader, Dataset, Sampler
 from tqdm import tqdm
 from transformers import WhisperForConditionalGeneration, WhisperProcessor, get_linear_schedule_with_warmup
 
-from checkpoints import BatchFractionCheckpoint, resume_checkpoint
+from checkpoints import BatchFractionCheckpoint, student_checkpoint_run
 from common_voice import load_splits
 
 sys.path.insert(0, str(ROOT / "pseudo-labelling"))
@@ -664,8 +667,8 @@ def main() -> None:
     log.info("frozen encoder parameters: %d", frozen)
     log.info("trainable decoder parameters: %d", trainable)
 
-    ckpt_dir = cfg.checkpoints / cfg.name
-    ckpt_path = resume_checkpoint(ckpt_dir, cfg.resume)
+    ckpt_dir, ckpt_path = student_checkpoint_run(cfg.checkpoints, cfg.name, cfg.resume, cfg.max_epochs)
+    log.info("checkpoint directory %s", ckpt_dir)
     train_meta = {
         "model": cfg.name,
         "base": cfg.base,

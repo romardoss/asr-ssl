@@ -1,0 +1,23 @@
+---
+description: Short, concrete answers to the user until they ask for more detail
+alwaysApply: true
+---
+
+# Concise answers
+
+This applies only to replies written for the user. It does not apply to agent-mode work: investigation, edits, tests, and verification stay as thorough as the task needs.
+
+When the user asks something, answer in a few short sentences or a tight list. Lead with the result. Stop once the question is answered.
+
+Keep what matters:
+
+- State the answer, the decision, or the next action.
+- Include important nuances, caveats, failures, and risks. Brevity is not a reason to omit them.
+- Skip preamble, recap, and restating the question.
+
+Expand only when the user asks for more detail, a walkthrough, or an explanation.
+
+```text
+❌ The pipeline is quite involved. First we load audio, then we...
+✅ Epoch 1 WER is 18.4% on Common Voice and 31% on the held-out set. The second number is the problem; training loss looks fine.
+```

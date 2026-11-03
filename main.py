@@ -1,15 +1,34 @@
 """Start a project stage. Settings still come from ``config.yaml``.
 
     python main.py pipeline
+        Run the stages in ``pipeline`` in order: language filter, 30-second
+        splits, teacher labelling, judge marks, student training, evaluation.
+        Each stage is run, skip, or skip_if_present.
     python main.py pipeline --dry-run
+        Print those stages and the commands they would start.
     python main.py fine-tune
+        Fine-tune the Whisper decoder on ``data.train``. The encoder stays
+        frozen. Dev is scored during training; each ``data.test`` set is
+        scored after it.
     python main.py student
+        Fine-tune a student decoder on VOA slices and their pseudo-labels.
+        Dev and the final test are Common Voice.
     python main.py evaluate
+        Score ``model.id`` on each configured test set and on all of them
+        combined. Writes results under ``evaluation/``.
     python main.py evaluate --model /path/to/last.ckpt
+        Same scoring, loading that checkpoint on top of ``model.id``.
     python main.py label
+        Transcribe Ukrainian VOA slices with ``pseudo_labelling.teacher_model``.
+        Appends ``labels.csv`` under ``pseudo_labelling.output_dir``.
     python main.py judge --max-examples 32
+        Ask the OpenRouter judge to mark pseudo-label quality and append
+        ``label_marks.csv``. ``--max-examples`` limits how many rows are sent.
     python main.py plot --watch
+        Plot loss and error rates from a fine-tune or student ``metrics.csv``.
+        ``--watch`` redraws the plots while that file changes.
     python main.py marks
+        Bar plot of the judge marks in ``label_marks.csv``.
 """
 
 from __future__ import annotations

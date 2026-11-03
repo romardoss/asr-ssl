@@ -13,8 +13,8 @@ model:
   language: uk
 
 gpus:
-  nvidia0: false
-  nvidia1: true
+  nvidia0: true
+  nvidia1: false
 
 batch_size:
   train: 32
@@ -70,15 +70,15 @@ pseudo_labelling:
 
 student:
   # Train on VOA slices. Dev during the epoch and the test after it are Common Voice.
-  name: student_model-whisper-uk
+  name: student_whisper-commonvoice-based
   base: openai/whisper-medium
-  init: openai/whisper-medium
+  init: /mnt/data/rberehun/checkpoints/model-whisper-uk/model-whisper-uk-epoch00.ckpt
   # latest uses the newest labels.csv / label_marks.csv for pseudo_labelling.teacher_model
   marks: latest
   labels: latest
   # false trains on every non-empty label and does not read marks
   filter_marks: true
-  accepted_mark: [4, 5]
+  accepted_mark: [0,1,2,3,4,5]
   voa: /mnt/data/rberehun/voa-ukr
   sample_rate: 16000
   language: uk

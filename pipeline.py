@@ -64,6 +64,8 @@ class PipelineSettings:
     labels_spec: str
     checkpoints: Path
     student_name: str
+    student_resume: bool
+    student_max_epochs: int
 
 
 def _mapping(data: dict, name: str) -> dict:
@@ -140,6 +142,8 @@ def load_pipeline(path: Path | None = None) -> PipelineSettings:
         labels_spec=_text(student, "labels", "student.labels"),
         checkpoints=Path(_text(paths, "checkpoints", "paths.checkpoints")),
         student_name=_text(student, "name", "student.name"),
+        student_resume=_bool(student, "resume", "student.resume"),
+        student_max_epochs=_positive_int(student, "max_epochs", "student.max_epochs"),
     )
 
 
@@ -179,6 +183,30 @@ def execute(command: list[str], env: dict[str, str], dry_run: bool) -> None:
 
 def note(stage: str, action: str, detail: str) -> None:
     print(f"[{stage}] {action}: {detail}", flush=True)
+
+
+def student_eval_checkpoint(cfg: PipelineSettings, dry_run: bool) -> Path:
+    """Checkpoint evaluation should score after the student stage.
+
+    A dry run that would train reports the directory training would create.
+    After a real run, this is the newest directory that already has a
+    checkpoint, including a run that just finished. Calling the training
+    picker here would allocate another empty directory.
+    """
+    fine_tune = str(ROOT / "fine-tune")
+    if fine_tune not in sys.path:
+        sys.path.insert(0, fine_tune)
+    import checkpoints
+
+    if dry_run and cfg.student == "run":
+        directory, _resume_from = checkpoints.student_checkpoint_run(
+            cfg.checkpoints, cfg.student_name, cfg.student_resume, cfg.student_max_epochs
+        )
+        return directory / "last.ckpt"
+    found = checkpoints.latest_student_checkpoint(cfg.checkpoints, cfg.student_name)
+    if found is not None:
+        return found
+    return cfg.checkpoints / cfg.student_name / "last.ckpt"
 
 
 def label_ready(output_dir: Path, teacher: Path) -> bool:
@@ -327,7 +355,7 @@ def main() -> None:
     else:
         note("student", "skip", cfg.student_name)
 
-    checkpoint = cfg.checkpoints / cfg.student_name / "last.ckpt"
+    checkpoint = student_eval_checkpoint(cfg, args.dry_run)
     if cfg.evaluate == "run":
         if not args.dry_run and not present(checkpoint):
             raise SystemExit(f"Student checkpoint not found: {checkpoint}")
