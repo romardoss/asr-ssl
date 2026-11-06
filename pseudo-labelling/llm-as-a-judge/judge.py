@@ -4,7 +4,10 @@ Reads ``OPENROUTER_API_KEY`` and ``OPENROUTER_MODEL`` from the environment
 (``.env`` fills any name that is not already set). Sends batches of transcripts
 as ``index label`` lines, keeps several requests in flight, and appends each
 accepted batch to ``label_marks.csv`` beside the source file. A stopped run
-continues from indexes that are not in that file yet.
+continues from indexes that are not in that file yet. Without ``--labels`` the
+source is the newest ``labels.csv`` of ``pseudo_labelling.teacher_model``.
+``--workers`` and ``--retries`` default to ``pipeline.judge_workers`` and
+``pipeline.judge_retries``.
 
     python pseudo-labelling/llm-as-a-judge/judge.py --max-examples 32
 """
@@ -23,7 +26,12 @@ from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_LABELS = ROOT / "output" / "pseudo-labelling" / "model-whisper-uk-epoch00-01" / "labels.csv"
+if str(ROOT) not in sys.path:
+    sys.path.append(str(ROOT))
+
+from project_config import config_int, configured_labelling_file, load_config  # noqa: E402
+
+CONFIG = load_config()
 PROMPT_PATH = Path(__file__).resolve().parent / "prompt.txt"
 MARKS_NAME = "label_marks.csv"
 BATCH_SIZE = 16
@@ -51,10 +59,25 @@ def load_dotenv(path: Path | None = None) -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--labels", type=Path, default=DEFAULT_LABELS, help="Pseudo-label CSV to score.")
+    parser.add_argument(
+        "--labels",
+        type=Path,
+        default=None,
+        help="Pseudo-label CSV to score. Default: newest labels.csv of pseudo_labelling.teacher_model.",
+    )
     parser.add_argument("--max-examples", type=int, help="Score only the first N rows of the CSV.")
-    parser.add_argument("--workers", type=int, default=4, help="How many OpenRouter requests may be in flight.")
-    parser.add_argument("--retries", type=int, default=3, help="Attempts per batch before leaving it for the next run.")
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=config_int(CONFIG, "pipeline.judge_workers"),
+        help="How many OpenRouter requests may be in flight.",
+    )
+    parser.add_argument(
+        "--retries",
+        type=int,
+        default=config_int(CONFIG, "pipeline.judge_retries"),
+        help="Attempts per batch before leaving it for the next run.",
+    )
     args = parser.parse_args()
     if args.max_examples is not None and args.max_examples < 1:
         parser.error("--max-examples must be at least 1")
@@ -207,7 +230,10 @@ def main() -> None:
         raise SystemExit(f"Prompt not found: {PROMPT_PATH}")
     prompt = PROMPT_PATH.read_text(encoding="utf-8").strip()
 
-    labels_path = args.labels if args.labels.is_absolute() else ROOT / args.labels
+    if args.labels is None:
+        labels_path = configured_labelling_file("labels.csv", CONFIG)
+    else:
+        labels_path = args.labels if args.labels.is_absolute() else ROOT / args.labels
     marks_path = labels_path.parent / MARKS_NAME
     rows = read_labels(labels_path, args.max_examples)
     done = finished_indexes(marks_path)

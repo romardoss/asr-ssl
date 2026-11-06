@@ -1,14 +1,21 @@
-"""Load fine-tune and test settings from the repo ``config.yaml``."""
+"""Load fine-tune and test settings from the project config.
+
+The file is ``config.yaml`` in the repo root, or the one ``ASR_CONFIG`` names.
+"""
 
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
-CONFIG_PATH = ROOT / "config.yaml"
+if str(ROOT) not in sys.path:
+    sys.path.append(str(ROOT))
+
+from project_config import CONFIG_PATH, find_labelling_file, labelling_runs  # noqa: E402,F401
 
 
 @dataclass(frozen=True)
@@ -19,7 +26,10 @@ class Settings:
     tg_voices: Path
     ukr_dialects: Path
     cv10_test: Path
+    common_voice_splits: Path
     checkpoints: Path
+    output_dir: Path
+    evaluation_dir: Path
     model_id: str
     model_name: str
     language: str
@@ -148,25 +158,21 @@ def load_settings(path: Path | None = None) -> Settings:
     training = _mapping(loaded, "training")
     data = _mapping(loaded, "data")
 
-    selected = []
-    for index in (0, 1):
-        if _bool(gpus, f"nvidia{index}", f"gpus.nvidia{index}"):
-            selected.append(index)
-    if not selected:
-        raise SystemExit("Enable at least one GPU in config.yaml (gpus.nvidia0, gpus.nvidia1).")
-
     return Settings(
-        common_voice=Path(_text(paths, "common_voice", "paths.common_voice")),
-        fleurs=Path(_text(paths, "fleurs", "paths.fleurs")),
-        opentts=Path(_text(paths, "opentts", "paths.opentts")),
-        tg_voices=Path(_text(paths, "tg_voices", "paths.tg_voices")),
-        ukr_dialects=Path(_text(paths, "ukr_dialects", "paths.ukr_dialects")),
-        cv10_test=Path(_text(paths, "cv10_test", "paths.cv10_test")),
-        checkpoints=Path(_text(paths, "checkpoints", "paths.checkpoints")),
+        common_voice=_path(paths, "common_voice", "paths.common_voice"),
+        fleurs=_path(paths, "fleurs", "paths.fleurs"),
+        opentts=_path(paths, "opentts", "paths.opentts"),
+        tg_voices=_path(paths, "tg_voices", "paths.tg_voices"),
+        ukr_dialects=_path(paths, "ukr_dialects", "paths.ukr_dialects"),
+        cv10_test=_path(paths, "cv10_test", "paths.cv10_test"),
+        common_voice_splits=_path(paths, "common_voice_splits", "paths.common_voice_splits"),
+        checkpoints=_path(paths, "checkpoints", "paths.checkpoints"),
+        output_dir=_path(paths, "fine_tune_output", "paths.fine_tune_output"),
+        evaluation_dir=_path(paths, "evaluation", "paths.evaluation"),
         model_id=_text(model, "id", "model.id"),
         model_name=_text(model, "name", "model.name"),
         language=_text(model, "language", "model.language"),
-        gpus=tuple(selected),
+        gpus=_gpus(gpus, "gpus"),
         train_batch_size=_positive_int(batches, "train", "batch_size.train"),
         testing_after_train_batch_size=_positive_int(
             batches, "testing_after_train", "batch_size.testing_after_train"
@@ -197,6 +203,7 @@ def load_settings(path: Path | None = None) -> Settings:
 @dataclass(frozen=True)
 class StudentSettings:
     checkpoints: Path
+    output_dir: Path
     name: str
     base: str
     init: str
@@ -228,31 +235,6 @@ class StudentSettings:
     val_every: float
     max_audio_seconds: float
     max_label_tokens: int
-
-
-def labelling_runs(output_dir: Path, teacher: Path) -> list[Path]:
-    """Numbered pseudo-label directories for this teacher, oldest first."""
-    name = teacher.resolve().stem
-    slug = "".join(character if character.isalnum() or character in "._-" else "-" for character in name)
-    slug = slug.strip("-.") or "model"
-    prefix = f"{slug}-"
-    existing = []
-    if output_dir.is_dir():
-        for path in output_dir.glob(f"{prefix}*"):
-            suffix = path.name.removeprefix(prefix)
-            if path.is_dir() and suffix.isdigit():
-                existing.append(path)
-    existing.sort(key=lambda path: int(path.name.removeprefix(prefix)))
-    return existing
-
-
-def find_labelling_file(output_dir: Path, teacher: Path, filename: str) -> Path | None:
-    """Newest ``filename`` for this teacher, or ``None`` when labelling has not written it."""
-    for directory in reversed(labelling_runs(output_dir, teacher)):
-        candidate = directory / filename
-        if candidate.is_file() and candidate.stat().st_size > 0:
-            return candidate
-    return None
 
 
 def latest_labelling_file(output_dir: Path, teacher: Path, filename: str) -> Path:
@@ -301,13 +283,14 @@ def _mark_list(section: dict, key: str, label: str) -> tuple[int, ...]:
 
 
 def _gpus(section: dict, label: str) -> tuple[int, ...]:
+    """Training runs on one GPU. Exactly one of nvidia0 and nvidia1 must be true."""
     selected = []
     for index in (0, 1):
         key = f"nvidia{index}"
         if _bool(section, key, f"{label}.{key}"):
             selected.append(index)
-    if not selected:
-        raise SystemExit(f"Enable at least one GPU in config.yaml ({label}.nvidia0, {label}.nvidia1).")
+    if len(selected) != 1:
+        raise SystemExit(f"Enable exactly one GPU in config.yaml ({label}.nvidia0 or {label}.nvidia1).")
     return tuple(selected)
 
 
@@ -337,7 +320,8 @@ def load_student_settings(path: Path | None = None) -> StudentSettings:
         marks = Path()
 
     return StudentSettings(
-        checkpoints=Path(_text(paths, "checkpoints", "paths.checkpoints")),
+        checkpoints=_path(paths, "checkpoints", "paths.checkpoints"),
+        output_dir=_path(paths, "fine_tune_output", "paths.fine_tune_output"),
         name=name,
         base=_text(student, "base", "student.base"),
         init=_text(student, "init", "student.init"),

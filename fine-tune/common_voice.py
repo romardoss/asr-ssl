@@ -1,7 +1,7 @@
 """Load the local Ukrainian Common Voice splits.
 
-Audio files live under ``paths.common_voice`` / ``clips`` from ``config.yaml``.
-Split membership comes from the TSV files in ``datasets/common-voice/raw``
+Audio files live under ``paths.common_voice`` / ``clips`` from the config.
+Split membership comes from the TSV files in ``paths.common_voice_splits``
 (train_validated, dev, test, unlabelled).
 """
 
@@ -16,8 +16,6 @@ import pandas as pd
 from settings import load_settings
 
 ROOT = Path(__file__).resolve().parents[1]
-META_DIR = ROOT / "datasets" / "common-voice"
-RAW_DIR = META_DIR / "raw"
 SPLIT_FILES = {
     "train": "train_validated.tsv",
     "dev": "dev.tsv",
@@ -55,9 +53,9 @@ def checkpoint_root() -> Path:
     return load_settings().checkpoints
 
 
-def load_split(name: str, clips_dir: Path) -> pd.DataFrame:
+def load_split(name: str, clips_dir: Path, splits_dir: Path | None = None) -> pd.DataFrame:
     filename = SPLIT_FILES[name]
-    path = RAW_DIR / filename
+    path = (splits_dir or load_settings().common_voice_splits) / filename
     if not path.is_file():
         raise SystemExit(f"Split file not found: {path}")
     # Common Voice TSVs are one clip per line. Quotes inside a sentence are
@@ -92,4 +90,5 @@ def load_split(name: str, clips_dir: Path) -> pd.DataFrame:
 
 def load_splits() -> dict[str, pd.DataFrame]:
     clips_dir = common_voice_root() / "clips"
-    return {name: load_split(name, clips_dir) for name in SPLIT_FILES}
+    splits_dir = load_settings().common_voice_splits
+    return {name: load_split(name, clips_dir, splits_dir) for name in SPLIT_FILES}

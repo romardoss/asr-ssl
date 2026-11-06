@@ -4,12 +4,19 @@ from __future__ import annotations
 
 import re
 import shutil
+import sys
 from pathlib import Path
 
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
-CONFIG_PATH = ROOT / "config.yaml"
+if str(ROOT) not in sys.path:
+    sys.path.append(str(ROOT))
+
+from project_config import CONFIG_PATH  # noqa: E402
+
+# The copy beside checkpoints and test runs is always named config.yaml,
+# whichever file ASR_CONFIG selected.
 CONFIG_NAME = "config.yaml"
 META_NAME = "meta.yaml"
 

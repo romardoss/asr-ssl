@@ -305,7 +305,7 @@ def _parquet_files(root: Path, folder_name: str) -> list[Path]:
 
 def _common_voice(settings: Settings, folder_name: str) -> _FramePart:
     clips = _require_dir(settings.common_voice, "paths.common_voice") / "clips"
-    frame = load_split(folder_name, clips)
+    frame = load_split(folder_name, clips, settings.common_voice_splits)
     if frame.empty:
         raise SystemExit(f"common_voice {folder_name} has no clips")
     return _FramePart("common_voice", frame)

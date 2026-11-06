@@ -1,6 +1,6 @@
 """Plot Lightning metrics for one fine-tune version.
 
-Reads ``output/fine-tune/<model>/version_<N>/metrics.csv`` and writes PNG
+Reads ``<paths.fine_tune_output>/<model>/version_<N>/metrics.csv`` and writes PNG
 files under ``plots/`` in that same version folder. With ``--watch``, the
 folder is refreshed whenever the CSV changes. This script only reads the
 metrics file; it does not start or modify training.
@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
 import time
 from pathlib import Path
 
@@ -24,8 +25,12 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 FINE_TUNE_DIR = Path(__file__).resolve().parent
-OUTPUT_DIR = FINE_TUNE_DIR.parent / "output" / "fine-tune"
-DEFAULT_MODEL_NAME = "model-whisper-uk"
+ROOT = FINE_TUNE_DIR.parent
+if str(ROOT) not in sys.path:
+    sys.path.append(str(ROOT))
+
+from project_config import config_file, config_text, load_config  # noqa: E402
+
 PLOTS_DIRNAME = "plots"
 
 plt.rcParams.update(
@@ -50,8 +55,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--model-name",
-        default=DEFAULT_MODEL_NAME,
-        help="Directory name under output/fine-tune. Default: model-whisper-uk. Student runs use student_model-whisper-uk.",
+        default=None,
+        help="Directory name under paths.fine_tune_output. Default: model.name. Student runs use student.name.",
     )
     parser.add_argument(
         "--version",
@@ -81,8 +86,9 @@ def version_directories(model_dir: Path) -> list[Path]:
     return sorted(found, key=lambda path: int(path.name.removeprefix("version_")))
 
 
-def resolve_version_dir(model_name: str, version: str | None) -> Path:
-    model_dir = OUTPUT_DIR / model_name
+def resolve_version_dir(model_name: str | None, version: str | None) -> Path:
+    loaded = load_config()
+    model_dir = config_file(loaded, "paths.fine_tune_output") / (model_name or config_text(loaded, "model.name"))
     if not model_dir.is_dir():
         raise SystemExit(f"Model output directory not found: {model_dir}")
     versions = version_directories(model_dir)

@@ -1,8 +1,8 @@
 """Plot VOA-ukr metadata statistics.
 
 Same figures as notebooks/voa_ukr_meta_stats.ipynb. Reads
-datasets/voa-ukr/voa_ukr_meta.json and writes plots to output/eda. A partial checkpoint
-is fine.
+``voa_prep.whisper_meta`` and writes plots to ``voa_prep.meta_figures``. A partial
+checkpoint is fine.
 
 Run from the repo root:
 
@@ -12,6 +12,7 @@ Run from the repo root:
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import matplotlib
@@ -20,9 +21,15 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import pandas as pd
 
-ROOT = Path(__file__).resolve().parents[1]
-META_PATH = Path(__file__).resolve().parents[2] / "datasets" / "voa-ukr" / "voa_ukr_meta.json"
-FIGURE_DIR = ROOT / "output" / "eda"
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.append(str(ROOT))
+
+from project_config import config_file, load_config  # noqa: E402
+
+CONFIG = load_config()
+META_PATH = config_file(CONFIG, "voa_prep.whisper_meta")
+FIGURE_DIR = config_file(CONFIG, "voa_prep.meta_figures")
 
 
 def load_rows(path: Path) -> tuple[dict, pd.DataFrame]:

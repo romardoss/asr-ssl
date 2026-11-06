@@ -5,7 +5,7 @@ The model is a checkpoint or directory path, or ``model.id`` from
 checkpoint loaded on top of ``model.id``. GPUs, language, and the batch size
 come from that same file.
 
-Results and plots are written to ``evaluation/<model>-XX/``.
+Results and plots are written to ``<paths.evaluation>/<model>-XX/``.
 A checkpoint test also stores ``config.yaml`` and ``meta.yaml`` there.
 An original Whisper id stores ``meta.yaml`` with the model name.
 
@@ -31,7 +31,6 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 ROOT = Path(__file__).resolve().parents[1]
-EVALUATION_DIR = Path(__file__).resolve().parent
 FINE_TUNE_PATH = ROOT / "fine-tune" / "fine-tune.py"
 
 plt.rcParams.update(
@@ -112,12 +111,13 @@ def next_run_dir(slug: str) -> Path:
     slug = slug.removeprefix("model-") or slug
     prefix = f"{slug}-"
     numbers = []
-    for path in EVALUATION_DIR.glob(f"{prefix}*"):
+    evaluation_dir = ft.SETTINGS.evaluation_dir
+    for path in evaluation_dir.glob(f"{prefix}*"):
         suffix = path.name.removeprefix(prefix)
         if path.is_dir() and suffix.isdigit():
             numbers.append(int(suffix))
     number = max(numbers) + 1 if numbers else 1
-    return EVALUATION_DIR / f"{prefix}{number:02d}"
+    return evaluation_dir / f"{prefix}{number:02d}"
 
 
 def load_whisper(kind: str, source: str):

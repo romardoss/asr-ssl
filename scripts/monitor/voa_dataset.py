@@ -1,6 +1,6 @@
 """Read the local robinhad/VOA-ukr snapshot.
 
-The files live at ``/mnt/data/rberehun/voa-ukr`` (override with ``VOA_UKR_ROOT``).
+The snapshot directory is ``pseudo_labelling.voa`` from the project config.
 Metadata collection and training should both import this module instead of
 streaming the dataset from the Hub. Shard order matches that stream, so
 ``index`` is the same ``stream_index`` already stored in ``voa_ukr_meta.json``.
@@ -19,18 +19,21 @@ Audio stays compressed. Callers decode it themselves.
 from __future__ import annotations
 
 import argparse
-import os
+import sys
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.append(str(ROOT))
+
+from project_config import config_file, load_config  # noqa: E402
 
 DATASET_ID = "robinhad/VOA-ukr"
 SPLIT = "train"
-DEFAULT_ROOT = Path("/mnt/data/rberehun/voa-ukr")
 
 
 def resolve_root(root: Path | str | None = None) -> Path:
-    if root is None:
-        root = os.environ.get("VOA_UKR_ROOT", DEFAULT_ROOT)
-    path = Path(root)
+    path = Path(root) if root is not None else config_file(load_config(), "pseudo_labelling.voa")
     if not path.is_dir():
         raise FileNotFoundError(f"VOA-ukr dataset not found: {path}")
     return path

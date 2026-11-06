@@ -71,7 +71,6 @@ from preprocess import Segment, decode, parse_timestamp, slice_audio
 
 MAX_AUDIO_SECONDS = SETTINGS.max_audio_seconds
 MAX_LABEL_TOKENS = SETTINGS.max_label_tokens
-OUTPUT_DIR = FINE_TUNE_DIR.parent / "output" / "fine-tune"
 
 _PUNCTUATION = re.compile(r"[^\w\s']+", flags=re.UNICODE)
 _SPACES = re.compile(r"\s+")
@@ -565,7 +564,7 @@ def group_examples(examples: list[SliceExample], locations: dict[str, tuple[Path
 def main() -> None:
     cfg = SETTINGS
     local_rank = int(os.environ.get("LOCAL_RANK", "0"))
-    output_dir = OUTPUT_DIR / cfg.name
+    output_dir = cfg.output_dir / cfg.name
     if local_rank == 0:
         setup_logging(output_dir / "train.log")
     log = logging.getLogger("fine-tune-student")
@@ -686,7 +685,7 @@ def main() -> None:
     checkpoint_callback = BatchFractionCheckpoint(
         ckpt_dir, cfg.name, fraction=cfg.checkpoint_every, meta=train_meta
     )
-    logger = CSVLogger(save_dir=str(OUTPUT_DIR), name=cfg.name)
+    logger = CSVLogger(save_dir=str(cfg.output_dir), name=cfg.name)
     checkpoint_callback.metrics_dir = Path(logger.log_dir)
     strategy = DDPStrategy(find_unused_parameters=False) if len(device_ids) > 1 else "auto"
     trainer = L.Trainer(

@@ -1,3 +1,6 @@
+# Project config. Another file can replace it: ASR_CONFIG=config.vast.yaml python main.py ...
+# Relative paths anywhere in this file resolve from the repo root.
+
 paths:
   common_voice: /mnt/data/rberehun/common-voice
   fleurs: /mnt/data/rberehun/fleurs-uk
@@ -6,6 +9,12 @@ paths:
   ukr_dialects: /mnt/data/rberehun/ukr-dialects
   cv10_test: /mnt/data/rberehun/cv10-uk-testset-clean
   checkpoints: /mnt/data/rberehun/checkpoints
+  # Common Voice split TSVs (train_validated, dev, test, unlabelled). Clips stay under common_voice/clips.
+  common_voice_splits: datasets/common-voice/raw
+  # Lightning metrics, logs, and plots of fine-tune and student runs: <fine_tune_output>/<name>/version_N
+  fine_tune_output: output/fine-tune
+  # evaluation/evaluate.py results: <evaluation>/<model>-XX
+  evaluation: evaluation
 
 model:
   id: openai/whisper-medium
@@ -107,6 +116,22 @@ student:
   max_audio_seconds: 30.0
   max_label_tokens: 448
 
+# VOA preparation files: pipeline.language and pipeline.timestamps, plus the analysis scripts.
+# The final outputs of those stages are pseudo_labelling.ukrainian_meta and pseudo_labelling.timestamps.
+voa_prep:
+  # scripts/monitor/meta_collector.py: Whisper transcript and language per clip
+  whisper_meta: datasets/voa-ukr/voa_ukr_meta.json
+  # scripts/monitor/predict_languages.py: MMS language logits per clip
+  mms_languages: datasets/voa-ukr/mms-language-confidences.csv
+  # scripts/monitor/split_language_meta.py: clips that are not Ukrainian
+  other_languages: datasets/voa-ukr/other_languages.csv
+  # pseudo-labelling/vad-chunking/chunk.py: per-shard VAD progress
+  vad_progress: datasets/voa-ukr/vad-progress
+  # scripts/monitor/language_analysis.py figures
+  language_figures: analysis/voa-meta-plots
+  # scripts/monitor/meta_stats.py figures
+  meta_figures: output/eda
+
 # run, skip, or skip_if_present. student and evaluate are run or skip.
 # skip_if_present leaves a step out when its output file is already on disk:
 # language -> pseudo_labelling.ukrainian_meta
@@ -128,3 +153,15 @@ pipeline:
   judge_retries: 3
   # OpenRouter model. The API key stays in .env. Empty is allowed only when clean does not run.
   judge_model: ""
+
+# scripts/vast/download_data.py: Hugging Face dataset repos for the local paths above.
+# Public repos already have the layout the code reads. private_repo holds what is not
+# public: common-voice/*.tar, fleurs-uk/, checkpoints/, pseudo-labelling/ (see HF_UPLOAD.md).
+# robinhad/VOA-ukr is gated: the HF_TOKEN account needs approved access.
+downloads:
+  private_repo: CHANGE_ME/asr-ssl-vast
+  opentts: Yehor/opentts-uk
+  tg_voices: Yehor/tg-voices-uk
+  ukr_dialects: KSE-RESEARCH-Group/ukr-dialects-audio-dataset
+  cv10_test: Yehor/cv10-uk-testset-clean
+  voa: robinhad/VOA-ukr

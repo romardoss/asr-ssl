@@ -4,3 +4,4 @@ env/
 __pycache__/
 output/
 datasets/common-voice/*.csv
+.vast/

@@ -1,6 +1,7 @@
 """Bar plot of pseudo-label quality marks.
 
-Reads ``label_marks.csv`` and writes ``label_quality.png`` beside it.
+Reads ``label_marks.csv`` and writes ``label_quality.png`` beside it. Without
+``--marks`` the file is the newest one of ``pseudo_labelling.teacher_model``.
 If an id was scored more than once, the last mark is kept.
 
     python pseudo-labelling/llm-as-a-judge/plot_marks.py
@@ -10,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import sys
 from collections import Counter
 from pathlib import Path
 
@@ -19,7 +21,11 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_MARKS = ROOT / "output" / "pseudo-labelling" / "model-whisper-uk-epoch00-01" / "label_marks.csv"
+if str(ROOT) not in sys.path:
+    sys.path.append(str(ROOT))
+
+from project_config import configured_labelling_file  # noqa: E402
+
 MARKS = tuple(range(6))
 COLORS = ("#9b2226", "#bb3e03", "#ca6702", "#ee9b00", "#90a955", "#4d7c0f")
 
@@ -41,7 +47,12 @@ plt.rcParams.update(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--marks", type=Path, default=DEFAULT_MARKS, help="label_marks.csv to summarise.")
+    parser.add_argument(
+        "--marks",
+        type=Path,
+        default=None,
+        help="label_marks.csv to summarise. Default: newest one of pseudo_labelling.teacher_model.",
+    )
     return parser.parse_args()
 
 
@@ -83,7 +94,10 @@ def write_plot(counts: Counter[int], path: Path) -> None:
 
 def main() -> None:
     args = parse_args()
-    marks_path = args.marks if args.marks.is_absolute() else ROOT / args.marks
+    if args.marks is None:
+        marks_path = configured_labelling_file("label_marks.csv")
+    else:
+        marks_path = args.marks if args.marks.is_absolute() else ROOT / args.marks
     counts = latest_marks(marks_path)
     destination = marks_path.parent / "label_quality.png"
     write_plot(counts, destination)

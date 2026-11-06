@@ -1,15 +1,16 @@
 """Split Ukrainian VOA clips so every row is at most 30 seconds.
 
-Reads ``datasets/voa-ukr/ukrainian.csv``. A clip of 30 seconds or less is copied
+Reads ``pseudo_labelling.ukrainian_meta``. A clip of 30 seconds or less is copied
 unchanged. A longer clip is cut with Silero VAD: inside each 30 second window
 the cut is the latest speech boundary that is still under 30 seconds. If that
 window has no boundary, the cut is exactly 30 seconds. The next window starts
 at that cut.
 
-Audio bytes come from one VOA parquet shard (``--shard``). Progress for that
-shard is appended to ``datasets/voa-ukr/vad-progress/<shard>.jsonl``, so several
-shards can run at once. ``chunk_orchestrator.py`` starts those processes and
-writes ``datasets/voa-ukr/ukrainian_30s.csv``.
+Audio bytes come from one VOA parquet shard (``--shard``) under
+``pseudo_labelling.voa``. Progress for that shard is appended to
+``<voa_prep.vad_progress>/<shard>.jsonl``, so several shards can run at once.
+``chunk_orchestrator.py`` starts those processes and writes
+``pseudo_labelling.timestamps``. All paths come from the project config.
 
     python pseudo-labelling/vad-chunking/chunk.py --shard /path/to/train-00000-of-00195.parquet
 """
@@ -29,10 +30,16 @@ import pyarrow.parquet as pq
 from tqdm import tqdm
 
 ROOT = Path(__file__).resolve().parents[2]
-SOURCE_CSV = ROOT / "datasets" / "voa-ukr" / "ukrainian.csv"
-OUTPUT_CSV = ROOT / "datasets" / "voa-ukr" / "ukrainian_30s.csv"
-PROGRESS_DIR = ROOT / "datasets" / "voa-ukr" / "vad-progress"
-DEFAULT_VOA_ROOT = Path("/mnt/data/rberehun/voa-ukr")
+if str(ROOT) not in sys.path:
+    sys.path.append(str(ROOT))
+
+from project_config import config_file, load_config  # noqa: E402
+
+CONFIG = load_config()
+SOURCE_CSV = config_file(CONFIG, "pseudo_labelling.ukrainian_meta")
+OUTPUT_CSV = config_file(CONFIG, "pseudo_labelling.timestamps")
+PROGRESS_DIR = config_file(CONFIG, "voa_prep.vad_progress")
+VOA_ROOT = config_file(CONFIG, "pseudo_labelling.voa")
 MAX_SECONDS = 30.0
 VAD_SAMPLE_RATE = 16000
 
@@ -49,7 +56,7 @@ def progress_path(shard: Path) -> Path:
 
 
 def voa_root() -> Path:
-    root = Path(os.environ.get("VOA_UKR_ROOT", DEFAULT_VOA_ROOT))
+    root = VOA_ROOT
     data = root / "data"
     if not data.is_dir():
         raise SystemExit(f"VOA data directory not found: {data}")

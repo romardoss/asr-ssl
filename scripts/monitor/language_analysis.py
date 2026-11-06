@@ -1,8 +1,8 @@
 """Plot MMS language-id results against the Whisper labels in the metadata.
 
-Reads datasets/voa-ukr/mms-language-confidences.csv. The predicted language is the argmax
+Reads ``voa_prep.mms_languages``. The predicted language is the argmax
 logit. Confidence is that language's softmax probability. Whisper labels in
-datasets/voa-ukr/voa_ukr_meta.json use ISO 639-1 codes; MMS uses ISO 639-3, so the
+``voa_prep.whisper_meta`` use ISO 639-1 codes; MMS uses ISO 639-3, so the
 comparison maps Whisper codes before counting disagreements.
 
     python scripts/monitor/language_analysis.py
@@ -11,6 +11,7 @@ comparison maps Whisper codes before counting disagreements.
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import matplotlib
@@ -21,9 +22,15 @@ import numpy as np
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[2]
-LOGITS_PATH = ROOT / "datasets" / "voa-ukr" / "mms-language-confidences.csv"
-META_PATH = ROOT / "datasets" / "voa-ukr" / "voa_ukr_meta.json"
-FIGURE_DIR = ROOT / "analysis" / "voa-meta-plots"
+if str(ROOT) not in sys.path:
+    sys.path.append(str(ROOT))
+
+from project_config import config_file, load_config  # noqa: E402
+
+CONFIG = load_config()
+LOGITS_PATH = config_file(CONFIG, "voa_prep.mms_languages")
+META_PATH = config_file(CONFIG, "voa_prep.whisper_meta")
+FIGURE_DIR = config_file(CONFIG, "voa_prep.language_figures")
 
 # Whisper language codes to the MMS-LID-256 codes used in the logit columns.
 WHISPER_TO_MMS = {

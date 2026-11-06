@@ -1,4 +1,6 @@
-"""Run the existing Whisper blocks in order, from ``config.yaml``.
+"""Run the existing Whisper blocks in order, from the project config.
+
+The config is ``config.yaml``, or the file ``ASR_CONFIG`` names.
 
 Language filtering and 30-second splits are skipped when their files are
 already present and the stage is ``skip_if_present``. The same switch covers
@@ -21,12 +23,9 @@ from pathlib import Path
 
 import yaml
 
+from project_config import CONFIG_PATH, repo_path
+
 ROOT = Path(__file__).resolve().parent
-CONFIG_PATH = ROOT / "config.yaml"
-LANGUAGE_CSV = ROOT / "datasets" / "voa-ukr" / "ukrainian.csv"
-TIMESTAMPS_CSV = ROOT / "datasets" / "voa-ukr" / "ukrainian_30s.csv"
-WHISPER_META = ROOT / "datasets" / "voa-ukr" / "voa_ukr_meta.json"
-MMS_CSV = ROOT / "datasets" / "voa-ukr" / "mms-language-confidences.csv"
 FILE_MODES = {"run", "skip", "skip_if_present"}
 TAIL_MODES = {"run", "skip"}
 
@@ -66,6 +65,8 @@ class PipelineSettings:
     student_name: str
     student_resume: bool
     student_max_epochs: int
+    whisper_meta: Path
+    mms_languages: Path
 
 
 def _mapping(data: dict, name: str) -> dict:
@@ -121,6 +122,7 @@ def load_pipeline(path: Path | None = None) -> PipelineSettings:
     section = _mapping(loaded, "pipeline")
     student = _mapping(loaded, "student")
     paths = _mapping(loaded, "paths")
+    prep = _mapping(loaded, "voa_prep")
     judge_model = _require(section, "judge_model", "pipeline.judge_model")
     if not isinstance(judge_model, str):
         raise SystemExit("config.yaml pipeline.judge_model must be a string")
@@ -140,10 +142,12 @@ def load_pipeline(path: Path | None = None) -> PipelineSettings:
         judge_model=judge_model.strip(),
         filter_marks=_bool(student, "filter_marks", "student.filter_marks"),
         labels_spec=_text(student, "labels", "student.labels"),
-        checkpoints=Path(_text(paths, "checkpoints", "paths.checkpoints")),
+        checkpoints=repo_path(_text(paths, "checkpoints", "paths.checkpoints")),
         student_name=_text(student, "name", "student.name"),
         student_resume=_bool(student, "resume", "student.resume"),
         student_max_epochs=_positive_int(student, "max_epochs", "student.max_epochs"),
+        whisper_meta=repo_path(_text(prep, "whisper_meta", "voa_prep.whisper_meta")),
+        mms_languages=repo_path(_text(prep, "mms_languages", "voa_prep.mms_languages")),
     )
 
 
@@ -157,19 +161,6 @@ def should_run(mode: str, ready: bool) -> bool:
     if mode == "skip":
         return False
     return not ready
-
-
-def require_script_paths(labelling) -> None:
-    """The prep scripts write fixed files. Config has to name those same files."""
-    expected = {
-        "pseudo_labelling.ukrainian_meta": (labelling.ukrainian_meta, LANGUAGE_CSV),
-        "pseudo_labelling.timestamps": (labelling.timestamps, TIMESTAMPS_CSV),
-    }
-    for label, (configured, canonical) in expected.items():
-        if configured.resolve() != canonical.resolve():
-            raise SystemExit(
-                f"config.yaml {label} is {configured}, but the prep scripts write {canonical}."
-            )
 
 
 def execute(command: list[str], env: dict[str, str], dry_run: bool) -> None:
@@ -228,18 +219,18 @@ def resolve_labels(spec: str, labelling) -> Path | None:
     return path
 
 
-def run_language(cfg: PipelineSettings, env: dict[str, str], dry_run: bool) -> None:
+def run_language(cfg: PipelineSettings, labelling, env: dict[str, str], dry_run: bool) -> None:
     py = sys.executable
     execute([py, str(ROOT / "scripts" / "monitor" / "meta_collector.py")], env, dry_run)
     command = [
         py,
         str(ROOT / "scripts" / "monitor" / "predict_languages.py"),
         "--output",
-        str(MMS_CSV),
+        str(cfg.mms_languages),
         "--meta",
-        str(WHISPER_META),
+        str(cfg.whisper_meta),
         "--root",
-        env["VOA_UKR_ROOT"],
+        str(labelling.voa),
         "--model-id",
         cfg.mms_model,
         "--batch-size",
@@ -258,9 +249,9 @@ def main() -> None:
 
     cfg = load_pipeline()
     labelling = labelling_settings.load_labelling()
-    require_script_paths(labelling)
+    # Child scripts read the same config file as this process.
     env = os.environ.copy()
-    env["VOA_UKR_ROOT"] = str(labelling.voa)
+    env["ASR_CONFIG"] = str(CONFIG_PATH)
     py = sys.executable
 
     if cfg.language == "skip" and not present(labelling.ukrainian_meta):
@@ -270,7 +261,7 @@ def main() -> None:
 
     if should_run(cfg.language, present(labelling.ukrainian_meta)):
         note("language", "run", f"write {labelling.ukrainian_meta}")
-        run_language(cfg, env, args.dry_run)
+        run_language(cfg, labelling, env, args.dry_run)
         if not args.dry_run and not present(labelling.ukrainian_meta):
             raise SystemExit(f"Language split did not write {labelling.ukrainian_meta}")
     else:

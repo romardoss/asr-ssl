@@ -1,9 +1,9 @@
 """Split VOA metadata into Ukrainian-only and other-language CSVs.
 
 A clip is Ukrainian-only when both meta files label it Ukrainian:
-Whisper in datasets/voa-ukr/voa_ukr_meta.json (language == "uk") and MMS in
-datasets/voa-ukr/mms-language-confidences.csv (argmax logit == "ukr"). Every other clip
-goes to the other-languages file.
+Whisper in ``voa_prep.whisper_meta`` (language == "uk") and MMS in
+``voa_prep.mms_languages`` (argmax logit == "ukr"). Ukrainian clips go to
+``pseudo_labelling.ukrainian_meta``, every other clip to ``voa_prep.other_languages``.
 
 Run from the repo root:
 
@@ -13,15 +13,22 @@ Run from the repo root:
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import pandas as pd
 
-VOA_DIR = Path(__file__).resolve().parents[2] / "datasets" / "voa-ukr"
-WHISPER_META_PATH = VOA_DIR / "voa_ukr_meta.json"
-LOGITS_PATH = VOA_DIR / "mms-language-confidences.csv"
-UKRAINIAN_PATH = VOA_DIR / "ukrainian.csv"
-OTHER_PATH = VOA_DIR / "other_languages.csv"
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.append(str(ROOT))
+
+from project_config import config_file, load_config  # noqa: E402
+
+CONFIG = load_config()
+WHISPER_META_PATH = config_file(CONFIG, "voa_prep.whisper_meta")
+LOGITS_PATH = config_file(CONFIG, "voa_prep.mms_languages")
+UKRAINIAN_PATH = config_file(CONFIG, "pseudo_labelling.ukrainian_meta")
+OTHER_PATH = config_file(CONFIG, "voa_prep.other_languages")
 
 WHISPER_UKRAINIAN = "uk"
 MMS_UKRAINIAN = "ukr"

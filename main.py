@@ -1,4 +1,7 @@
-"""Start a project stage. Settings still come from ``config.yaml``.
+"""Start a project stage. Settings come from ``config.yaml``, or from the
+file named by ``ASR_CONFIG`` (for example ``config.vast.yaml``).
+
+    ASR_CONFIG=config.vast.yaml python main.py pipeline
 
     python main.py pipeline
         Run the stages in ``pipeline`` in order: language filter, 30-second
@@ -15,7 +18,7 @@
         Dev and the final test are Common Voice.
     python main.py evaluate
         Score ``model.id`` on each configured test set and on all of them
-        combined. Writes results under ``evaluation/``.
+        combined. Writes results under ``paths.evaluation``.
     python main.py evaluate --model /path/to/last.ckpt
         Same scoring, loading that checkpoint on top of ``model.id``.
     python main.py label
@@ -87,7 +90,9 @@ def main() -> None:
     judge.add_argument("--retries", type=int, default=None, help="Attempts per batch.")
 
     plot = commands.add_parser("plot", help="Plot fine-tune or student metrics.")
-    plot.add_argument("--model-name", default=None, help="Directory name under output/fine-tune.")
+    plot.add_argument(
+        "--model-name", default=None, help="Directory name under paths.fine_tune_output. Default: model.name."
+    )
     plot.add_argument("--version", default=None, help="Version number or folder. Default: newest.")
     plot.add_argument("--watch", action="store_true", help="Refresh while metrics.csv changes.")
     plot.add_argument("--interval", type=float, default=None, help="Seconds between checks in --watch mode.")

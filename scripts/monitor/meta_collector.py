@@ -1,4 +1,4 @@
-"""Collect VOA-ukr clip metadata into datasets/voa-ukr/voa_ukr_meta.json.
+"""Collect VOA-ukr clip metadata into ``voa_prep.whisper_meta`` from the project config.
 
 Same work as notebooks/voa_ukr_meta_collector.ipynb: for each train clip, store
 container metadata, the original transcription, a Whisper medium transcript, and
@@ -29,8 +29,9 @@ REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from voa_dataset import DATASET_ID, SPLIT, iter_clips, num_examples
+from project_config import config_file, load_config
 
-META_PATH = Path(__file__).resolve().parents[2] / "datasets" / "voa-ukr" / "voa_ukr_meta.json"
+META_PATH = config_file(load_config(), "voa_prep.whisper_meta")
 ENV_PATH = REPO / ".env"
 WHISPER_MODEL = "medium"
 LANGUAGE_SECONDS = 120

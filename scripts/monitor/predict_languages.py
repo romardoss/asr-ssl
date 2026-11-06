@@ -1,11 +1,12 @@
-"""Run facebook/mms-lid-256 language identification on the local VOA-ukr snapshot.
+"""Run MMS language identification (``pipeline.mms_model``) on the local VOA-ukr snapshot.
 
-Audio stays in the parquet shards. Durations come from datasets/voa-ukr/voa_ukr_meta.json.
+Audio stays in the parquet shards. Durations come from ``voa_prep.whisper_meta``.
+The model, batch size, input and output files default to the project config.
 Each shard is packed into batches on its own, decoded in memory, then dropped.
 
 Example:
 
-    python src/predict_languages.py --output datasets/voa-ukr/mms-language-confidences.csv --fp16
+    python scripts/monitor/predict_languages.py --fp16
 """
 
 from __future__ import annotations
@@ -23,9 +24,13 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from voa_dataset import iter_shard_clips, shards
+from project_config import config_file, config_int, config_text, load_config
 
-DEFAULT_MODEL_ID = "facebook/mms-lid-256"
-META_PATH = Path(__file__).resolve().parents[2] / "datasets" / "voa-ukr" / "voa_ukr_meta.json"
+CONFIG = load_config()
+DEFAULT_MODEL_ID = config_text(CONFIG, "pipeline.mms_model")
+DEFAULT_BATCH_SIZE = config_int(CONFIG, "pipeline.mms_batch_size")
+META_PATH = config_file(CONFIG, "voa_prep.whisper_meta")
+OUTPUT_PATH = config_file(CONFIG, "voa_prep.mms_languages")
 MAX_CLIP_SECONDS = 5 * 60
 
 
@@ -33,8 +38,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--output",
-        required=True,
-        help="Path to write the ID + per-language logit table to (CSV).",
+        default=OUTPUT_PATH,
+        help=f"Path to write the ID + per-language logit table to (CSV). Default: {OUTPUT_PATH}.",
     )
     parser.add_argument(
         "--meta",
@@ -46,7 +51,7 @@ def parse_args() -> argparse.Namespace:
         "--root",
         type=Path,
         default=None,
-        help="VOA-ukr dataset directory (default: VOA_UKR_ROOT or /mnt/data/rberehun/voa-ukr).",
+        help="VOA-ukr dataset directory (default: pseudo_labelling.voa).",
     )
     parser.add_argument(
         "--model-id",
@@ -56,7 +61,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--batch-size",
         type=int,
-        default=16,
+        default=DEFAULT_BATCH_SIZE,
         help="Max number of clips per batch (only meaningful when a GPU is available).",
     )
     parser.add_argument(

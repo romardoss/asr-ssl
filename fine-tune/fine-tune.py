@@ -10,7 +10,7 @@ Checkpoints (model, optimizer, and scheduler) are written to
 unnumbered ``<model-name>`` directory is left as it is. If ``last.ckpt`` is
 already in the newest numbered directory and ``training.resume`` is true,
 training resumes from it. Metrics and logs go to
-``output/fine-tune/<model-name>/``. Plots are written there when training ends.
+``<paths.fine_tune_output>/<model-name>/``. Plots are written there when training ends.
 
     python fine-tune/fine-tune.py
 """
@@ -66,7 +66,6 @@ from speech_data import SpeechSplit, decode_audio, load_configured_splits as loa
 
 MAX_AUDIO_SECONDS = SETTINGS.max_audio_seconds
 MAX_LABEL_TOKENS = SETTINGS.max_label_tokens
-OUTPUT_DIR = FINE_TUNE_DIR.parent / "output" / "fine-tune"
 
 _PUNCTUATION = re.compile(r"[^\w\s']+", flags=re.UNICODE)
 _SPACES = re.compile(r"\s+")
@@ -383,7 +382,7 @@ def write_results(path: Path, payload: dict) -> None:
 def main() -> None:
     cfg = SETTINGS
     local_rank = int(os.environ.get("LOCAL_RANK", "0"))
-    output_dir = OUTPUT_DIR / cfg.model_name
+    output_dir = cfg.output_dir / cfg.model_name
     if local_rank == 0:
         setup_logging(output_dir / "train.log")
     log = logging.getLogger("fine-tune")
@@ -466,7 +465,7 @@ def main() -> None:
     checkpoint_callback = BatchFractionCheckpoint(
         ckpt_dir, cfg.model_name, fraction=cfg.checkpoint_every, meta=train_meta
     )
-    logger = CSVLogger(save_dir=str(OUTPUT_DIR), name=cfg.model_name)
+    logger = CSVLogger(save_dir=str(cfg.output_dir), name=cfg.model_name)
     checkpoint_callback.metrics_dir = Path(logger.log_dir)
     strategy = DDPStrategy(find_unused_parameters=False) if len(device_ids) > 1 else "auto"
     trainer = L.Trainer(

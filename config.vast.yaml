@@ -1,0 +1,181 @@
+# vast.ai config. Select it for every command on the instance:
+#   export ASR_CONFIG=config.vast.yaml
+# Same keys as config.yaml. Only machine-specific values differ: data and checkpoints
+# under /workspace, one GPU (index 0), and VOA prep stages skipped because their
+# outputs are already in git. Relative paths resolve from the repo root.
+#
+# Expected layout on the instance (see VAST_AI.md):
+#   /workspace/asr_ssl          this repo
+#   /workspace/data/<dataset>   one directory per dataset below
+#   /workspace/checkpoints      teacher checkpoint and new runs
+
+paths:
+  common_voice: /workspace/data/common-voice
+  fleurs: /workspace/data/fleurs-uk
+  opentts: /workspace/data/opentts-uk
+  tg_voices: /workspace/data/tg-voices-uk
+  ukr_dialects: /workspace/data/ukr-dialects
+  cv10_test: /workspace/data/cv10-uk-testset-clean
+  checkpoints: /workspace/checkpoints
+  # Common Voice split TSVs (train_validated, dev, test, unlabelled). Clips stay under common_voice/clips.
+  common_voice_splits: datasets/common-voice/raw
+  # Lightning metrics, logs, and plots of fine-tune and student runs: <fine_tune_output>/<name>/version_N
+  fine_tune_output: output/fine-tune
+  # evaluation/evaluate.py results: <evaluation>/<model>-XX
+  evaluation: evaluation
+
+model:
+  id: openai/whisper-medium
+  name: model-whisper-uk
+  language: uk
+
+# Inside a vast.ai container the GPUs are numbered from 0. Rent a single-GPU instance.
+gpus:
+  nvidia0: true
+  nvidia1: false
+
+# Tuned on the original server. bf16 needs an Ampere or newer GPU.
+# On a 24 GB card lower train and testing first and check with limit_train_batches.
+batch_size:
+  train: 32
+  # для суто тренування 8 забирає 20гб відеопам'яті, можна більше але обережно
+  # dev and the test after fine-tuning; the optimizer is still in memory
+  testing_after_train: 8
+  # evaluation/evaluate.py, no optimizer resident
+  # для суто тестування 32 забирає 11гб відеопам'яті, можна більше
+  # для суто тестування 64 забирає 16гб відеопам'яті, можна більше
+  # 96 - OOM
+  testing: 64
+
+training:
+  learning_rate: 0.00001
+  warmup_steps: 50
+  max_epochs: 2
+  num_workers: 4
+  precision: bf16-true
+  seed: 42
+  gradient_clip: 1.0
+  weight_decay: 0.01
+  resume: true
+  baseline_eval: true
+  # 1.0 means the whole split. An integer means that many batches.
+  limit_train_batches: 1.0
+  limit_val_batches: 1.0
+  limit_test_batches: 1.0
+  checkpoint_every: 0.05
+
+data:
+  max_audio_seconds: 30.0
+  max_label_tokens: 448
+  # train and dev are concatenated. Test is scored once per dataset and once combined.
+  # common_voice, fleurs, and ukr_dialects have train, dev, and test.
+  # opentts and tg_voices are train only. cv10_test is test only.
+  # Broadcast Speech and YODAS2 stay out: their labels are unreliable.
+  train: [common_voice, fleurs, opentts, tg_voices, ukr_dialects]
+  dev: [common_voice, fleurs, ukr_dialects]
+  test: [common_voice, fleurs, ukr_dialects, cv10_test]
+
+pseudo_labelling:
+  teacher_model: /workspace/checkpoints/model-whisper-uk/model-whisper-uk-epoch00.ckpt
+  voa: /workspace/data/voa-ukr
+  ukrainian_meta: datasets/voa-ukr/ukrainian.csv
+  timestamps: datasets/voa-ukr/ukrainian_30s.csv
+  sample_rate: 16000
+  batch_size: 64
+  language: uk
+  task: transcribe
+  precision: bf16
+  resume: true
+  output_dir: output/pseudo-labelling
+
+student:
+  # Train on VOA slices. Dev during the epoch and the test after it are Common Voice.
+  name: student_whisper-commonvoice-based
+  base: openai/whisper-medium
+  init: /workspace/checkpoints/model-whisper-uk/model-whisper-uk-epoch00.ckpt
+  # latest uses the newest labels.csv / label_marks.csv for pseudo_labelling.teacher_model
+  marks: latest
+  labels: latest
+  # false trains on every non-empty label and does not read marks
+  filter_marks: true
+  accepted_mark: [0,1,2,3,4,5]
+  voa: /workspace/data/voa-ukr
+  sample_rate: 16000
+  language: uk
+  eval_data: common_voice
+  gpus:
+    nvidia0: true
+    nvidia1: false
+  batch_size:
+    train: 32
+    eval: 8
+  learning_rate: 0.00001
+  warmup_steps: 50
+  max_epochs: 2
+  num_workers: 4
+  precision: bf16-true
+  seed: 42
+  gradient_clip: 1.0
+  weight_decay: 0.01
+  resume: true
+  baseline_eval: false
+  limit_train_batches: 1.0
+  limit_val_batches: 1.0
+  limit_test_batches: 1.0
+  checkpoint_every: 0.25
+  val_every: 0.25
+  max_audio_seconds: 30.0
+  max_label_tokens: 448
+
+# VOA preparation files: pipeline.language and pipeline.timestamps, plus the analysis scripts.
+# The final outputs of those stages are pseudo_labelling.ukrainian_meta and pseudo_labelling.timestamps.
+voa_prep:
+  # scripts/monitor/meta_collector.py: Whisper transcript and language per clip
+  whisper_meta: datasets/voa-ukr/voa_ukr_meta.json
+  # scripts/monitor/predict_languages.py: MMS language logits per clip
+  mms_languages: datasets/voa-ukr/mms-language-confidences.csv
+  # scripts/monitor/split_language_meta.py: clips that are not Ukrainian
+  other_languages: datasets/voa-ukr/other_languages.csv
+  # pseudo-labelling/vad-chunking/chunk.py: per-shard VAD progress
+  vad_progress: datasets/voa-ukr/vad-progress
+  # scripts/monitor/language_analysis.py figures
+  language_figures: analysis/voa-meta-plots
+  # scripts/monitor/meta_stats.py figures
+  meta_figures: output/eda
+
+# run, skip, or skip_if_present. student and evaluate are run or skip.
+# skip_if_present leaves a step out when its output file is already on disk:
+# language -> pseudo_labelling.ukrainian_meta
+# timestamps -> pseudo_labelling.timestamps
+# label -> newest run under pseudo_labelling.output_dir already has labels.csv
+# clean -> label_marks.csv beside those labels
+# language and timestamps are skip: ukrainian.csv and ukrainian_30s.csv are in git.
+# label stays skip_if_present: copy labels.csv of the teacher into
+# pseudo_labelling.output_dir first, or it relabels about 2000 hours of VOA.
+pipeline:
+  language: skip
+  timestamps: skip
+  label: skip_if_present
+  clean: skip
+  student: run
+  evaluate: run
+  chunk_processes: 6
+  mms_model: facebook/mms-lid-256
+  mms_batch_size: 16
+  mms_fp16: true
+  judge_workers: 4
+  judge_retries: 3
+  # OpenRouter model. The API key stays in .env. Empty is allowed only when clean does not run.
+  judge_model: ""
+
+# scripts/vast/download_data.py: Hugging Face dataset repos for the local paths above.
+# Public repos already have the layout the code reads. private_repo holds what is not
+# public: common-voice/*.tar, fleurs-uk/, checkpoints/, pseudo-labelling/ (see HF_UPLOAD.md).
+# robinhad/VOA-ukr is gated: the HF_TOKEN account needs approved access.
+downloads:
+  private_repo: CHANGE_ME/asr-ssl-vast
+  opentts: Yehor/opentts-uk
+  tg_voices: Yehor/tg-voices-uk
+  ukr_dialects: KSE-RESEARCH-Group/ukr-dialects-audio-dataset
+  cv10_test: Yehor/cv10-uk-testset-clean
+  voa: robinhad/VOA-ukr

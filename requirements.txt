@@ -11,6 +11,8 @@ ctranslate2
 
 # Whisper fine-tuning
 torchaudio
+# Audio decoding in fine-tune/speech_data.py and fine-tune-student.py
+av
 lightning
 jiwer
 wandb

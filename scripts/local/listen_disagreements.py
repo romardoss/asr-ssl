@@ -1,7 +1,8 @@
 """Play clips whose MMS language disagrees with the Whisper label.
 
-Reads datasets/voa-ukr/mms-language-confidences.csv and datasets/voa-ukr/voa_ukr_meta.json. Prints both
-labels, writes the MP3 from the local Hugging Face snapshot, and opens it in
+Reads ``voa_prep.mms_languages`` and ``voa_prep.whisper_meta`` from the project config.
+Prints both labels, writes the MP3 from the local Hugging Face snapshot
+(``HF_HUB_CACHE``, default ``~/.cache/huggingface/hub``), and opens it in
 the default player. Enter plays the next clip. q stops.
 
     python listen_disagreements.py
@@ -15,13 +16,21 @@ import math
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
-LOGITS_PATH = REPO / "datasets" / "voa-ukr" / "mms-language-confidences.csv"
-META_PATH = REPO / "datasets" / "voa-ukr" / "voa_ukr_meta.json"
-DATASET_CACHE = Path.home() / ".cache" / "huggingface" / "hub" / "datasets--robinhad--VOA-ukr"
+if str(REPO) not in sys.path:
+    sys.path.append(str(REPO))
+
+from project_config import config_file, load_config  # noqa: E402
+
+CONFIG = load_config()
+LOGITS_PATH = config_file(CONFIG, "voa_prep.mms_languages")
+META_PATH = config_file(CONFIG, "voa_prep.whisper_meta")
+HUB_CACHE = Path(os.environ.get("HF_HUB_CACHE", Path.home() / ".cache" / "huggingface" / "hub"))
+DATASET_CACHE = HUB_CACHE / "datasets--robinhad--VOA-ukr"
 
 # Whisper ISO 639-1 codes mapped onto the MMS ISO 639-3 columns in the logits file.
 WHISPER_TO_MMS = {
@@ -197,8 +206,6 @@ def mismatched() -> list[dict]:
 
 def dataset_cache() -> tuple[Path, str]:
     cache = DATASET_CACHE
-    if not cache.is_dir():
-        cache = Path("/home/romardoss/.cache/huggingface/hub/datasets--robinhad--VOA-ukr")
     if not cache.is_dir():
         raise SystemExit(f"dataset cache not found: {DATASET_CACHE}")
     revision = (cache / "refs" / "main").read_text(encoding="utf-8").strip()

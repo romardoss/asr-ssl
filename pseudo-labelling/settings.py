@@ -1,14 +1,21 @@
-"""Labelling settings from the repo ``config.yaml``. Nothing is defaulted in code."""
+"""Labelling settings from the project config. Nothing is defaulted in code.
+
+The file is ``config.yaml`` in the repo root, or the one ``ASR_CONFIG`` names.
+"""
 
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
-CONFIG_PATH = ROOT / "config.yaml"
+if str(ROOT) not in sys.path:
+    sys.path.append(str(ROOT))
+
+from project_config import CONFIG_PATH  # noqa: E402
 
 
 @dataclass(frozen=True)
@@ -97,8 +104,8 @@ def load_labelling(path: Path | None = None) -> LabellingSettings:
             raise SystemExit(f"config.yaml gpus.{key} must be true or false")
         if value:
             selected.append(index)
-    if not selected:
-        raise SystemExit("Enable at least one GPU in config.yaml (gpus.nvidia0, gpus.nvidia1).")
+    if len(selected) != 1:
+        raise SystemExit("Enable exactly one GPU in config.yaml (gpus.nvidia0 or gpus.nvidia1).")
 
     return LabellingSettings(
         teacher_model=_path(section, "teacher_model", "pseudo_labelling.teacher_model"),
