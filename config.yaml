@@ -78,7 +78,7 @@ student:
   labels: latest
   # false trains on every non-empty label and does not read marks
   filter_marks: true
-  accepted_mark: [0,1,2,3,4,5]
+  accepted_mark: [3]
   voa: /mnt/data/rberehun/voa-ukr
   sample_rate: 16000
   language: uk

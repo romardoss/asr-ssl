@@ -1,0 +1,7 @@
+cd /mnt/data/rberehun
+cd /mnt/data/rberehun/checkpoints && ls
+
+source env/bin/activate
+python main.py pipeline
+
+git add . && git commit -m "" && git push

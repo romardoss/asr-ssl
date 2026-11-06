@@ -1,0 +1,34 @@
+2026-11-04 19:14:43,034 INFO model=/mnt/data/rberehun/checkpoints/student_whisper-commonvoice-based_01/student_whisper-commonvoice-based-epoch01.ckpt kind=ckpt gpus=['nvidia0'] CUDA_VISIBLE_DEVICES=0 testing_batch=64
+2026-11-04 19:14:44,507 INFO test clips: 18345 (common_voice 10956, fleurs 750, ukr_dialects 3435, cv10_test 3204)
+2026-11-04 19:14:45,050 INFO HTTP Request: GET https://huggingface.co/api/models/openai/whisper-medium/revision/main "HTTP/1.1 200 OK"
+2026-11-04 19:14:45,196 INFO HTTP Request: GET https://huggingface.co/api/models/openai/whisper-medium/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-11-04 19:14:45,347 INFO HTTP Request: GET https://huggingface.co/api/models/openai/whisper-medium/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-11-04 19:14:45,490 INFO HTTP Request: GET https://huggingface.co/api/models/openai/whisper-medium/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
+2026-11-04 19:14:45,794 INFO HTTP Request: GET https://huggingface.co/api/models/openai/whisper-medium/revision/main "HTTP/1.1 200 OK"
+2026-11-04 19:14:51,234 INFO cuda:0 batch 1/287
+2026-11-04 19:15:44,778 INFO cuda:0 batch 20/287
+2026-11-04 19:16:33,655 INFO cuda:0 batch 40/287
+2026-11-04 19:17:22,704 INFO cuda:0 batch 60/287
+2026-11-04 19:18:11,615 INFO cuda:0 batch 80/287
+2026-11-04 19:19:00,822 INFO cuda:0 batch 100/287
+2026-11-04 19:19:50,459 INFO cuda:0 batch 120/287
+2026-11-04 19:20:48,567 INFO cuda:0 batch 140/287
+2026-11-04 19:21:45,222 INFO cuda:0 batch 160/287
+2026-11-04 19:22:53,258 INFO cuda:0 batch 180/287
+2026-11-04 19:24:25,285 INFO cuda:0 batch 200/287
+2026-11-04 19:25:47,118 INFO cuda:0 batch 220/287
+2026-11-04 19:28:08,799 INFO cuda:0 batch 240/287
+2026-11-04 19:28:59,511 INFO cuda:0 batch 260/287
+2026-11-04 19:29:56,529 INFO cuda:0 batch 280/287
+2026-11-04 19:30:15,765 INFO loss 0.6930
+2026-11-04 19:30:15,765 INFO test combined {'wer': 0.33076999220480335, 'cer': 0.1377529531038015, 'mer': 0.3083902450279175, 'wil': 0.461523125732342, 'wip': 0.538476874267658, 'substitutions': 33544.0, 'deletions': 8191.0, 'insertions': 11730.0, 'hits': 119903.0, 'n': 18345.0, 'clips': 18345.0}
+2026-11-04 19:30:15,765 INFO test common_voice {'wer': 0.18018944588348823, 'cer': 0.04486776871990451, 'mer': 0.17614567300531256, 'wil': 0.2930819733600486, 'wip': 0.7069180266399514, 'substitutions': 10947.0, 'deletions': 1436.0, 'insertions': 1808.0, 'hits': 66373.0, 'n': 10956.0, 'clips': 10956.0}
+2026-11-04 19:30:15,765 INFO test fleurs {'wer': 0.11753169433354346, 'cer': 0.03766208108473448, 'mer': 0.11629357543835332, 'wil': 0.20318312236515212, 'wip': 0.7968168776348479, 'substitutions': 1389.0, 'deletions': 137.0, 'insertions': 152.0, 'hits': 12751.0, 'n': 750.0, 'clips': 750.0}
+2026-11-04 19:30:15,765 INFO test ukr_dialects {'wer': 0.7424567080636697, 'cer': 0.415619345083166, 'mer': 0.6182993445010925, 'wil': 0.8024640276322479, 'wip': 0.19753597236775208, 'substitutions': 18494.0, 'deletions': 6279.0, 'insertions': 9184.0, 'hits': 20963.0, 'n': 3435.0, 'clips': 3435.0}
+2026-11-04 19:30:15,765 INFO test cv10_test {'wer': 0.15912370457825004, 'cer': 0.03597528660288416, 'mer': 0.15514815604348753, 'wil': 0.2571996035319353, 'wip': 0.7428003964680647, 'substitutions': 2714.0, 'deletions': 339.0, 'insertions': 586.0, 'hits': 19816.0, 'n': 3204.0, 'clips': 3204.0}
+2026-11-04 19:30:15,765 INFO wrote /home/rberehun/asr-ssl/evaluation/student_whisper-commonvoice-based-epoch01-01/results.json
+2026-11-04 19:30:15,765 INFO wrote /home/rberehun/asr-ssl/evaluation/student_whisper-commonvoice-based-epoch01-01/predictions.csv
+2026-11-04 19:30:15,765 INFO wrote /home/rberehun/asr-ssl/evaluation/student_whisper-commonvoice-based-epoch01-01/plots/error_rates.png
+2026-11-04 19:30:15,765 INFO wrote /home/rberehun/asr-ssl/evaluation/student_whisper-commonvoice-based-epoch01-01/plots/edit_counts.png
+2026-11-04 19:30:15,765 INFO wrote /home/rberehun/asr-ssl/evaluation/student_whisper-commonvoice-based-epoch01-01/plots/utterance_wer.png
+2026-11-04 19:30:15,765 INFO wrote /home/rberehun/asr-ssl/evaluation/student_whisper-commonvoice-based-epoch01-01/plots/error_rates_by_dataset.png
