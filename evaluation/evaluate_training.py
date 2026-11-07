@@ -8,7 +8,8 @@ checkpoints are scored with ``evaluate.py``, which adds each to
 1. ``<name>-epoch00.ckpt``, saved at the end of the first epoch;
 2. the checkpoint ``last.ckpt`` points to, the final one of a finished run.
 
-With one epoch they are the same file and it is scored once. A checkpoint
+With one epoch they are the same file and it is scored once. ``--final-only``
+scores only the second one. A checkpoint
 that already has a row in ``results.csv`` is skipped, so running this again
 after a crash scores only what is missing.
 
@@ -41,6 +42,7 @@ def parse_args() -> argparse.Namespace:
     target = parser.add_mutually_exclusive_group(required=True)
     target.add_argument("--stage", choices=("fine-tune", "student"), help="Score the newest run of this stage.")
     target.add_argument("--checkpoint-dir", type=Path, help="Score this checkpoint directory.")
+    parser.add_argument("--final-only", action="store_true", help="Score only the final checkpoint.")
     parser.add_argument("--dry-run", action="store_true", help="Print what would be scored.")
     return parser.parse_args()
 
@@ -56,11 +58,12 @@ def stage_dir(stage: str) -> Path:
     return found.parent
 
 
-def targets(directory: Path) -> list[Path]:
+def targets(directory: Path, final_only: bool = False) -> list[Path]:
     """The first-epoch checkpoint and the final one, without repeats."""
     chosen: list[Path] = []
-    first = sorted(path for path in directory.glob("*-epoch00.ckpt") if path.is_file())
-    chosen.extend(first[:1])
+    if not final_only:
+        first = sorted(path for path in directory.glob("*-epoch00.ckpt") if path.is_file())
+        chosen.extend(first[:1])
     final = latest_checkpoint(directory)
     if final is not None:
         chosen.append(final)
@@ -75,7 +78,7 @@ def main() -> None:
     directory = args.checkpoint_dir.expanduser().resolve() if args.checkpoint_dir else stage_dir(args.stage)
     if not directory.is_dir():
         raise SystemExit(f"Checkpoint directory not found: {directory}")
-    checkpoints = targets(directory)
+    checkpoints = targets(directory, args.final_only)
     if not checkpoints:
         raise SystemExit(f"No checkpoints in {directory}")
 

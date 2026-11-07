@@ -2,10 +2,11 @@
 
 Контекст: `train_validated.tsv` тепер містить усі валідовані записи Common Voice, крім кліпів dev і test (62 460 рядків). Спільні з dev і test речення й диктори лишено свідомо. Див. `datasets/common-voice/README.md`.
 
-1. [ ] **Перенавчити й переоцінити моделі.** Усі наявні моделі вчилися на train, що містив кліпи dev.
-   1. `python main.py fine-tune --note "..."` на новому train. Кроків за епоху стане менше, тож зміниться й розклад LR.
-   2. Якщо вчитель змінився, перезібрати псевдомітки й перенавчити student.
-   3. Переоцінити `evaluation/baseline/`, перебудувати `model_comparison.png` (`evaluation/batch-compare.py`) і повторно прогнати `datasets/leak-clean/score_common_voice_cleaned.py`.
+1. [ ] **Перенавчити й переоцінити моделі.** Усі наявні моделі вчилися на train, що містив кліпи dev, і в `precision: bf16-true`, де при `lr 1e-5` змінюється лише близько 10 % ваг декодера. Тепер у конфігах `bf16-mixed`. Старі результати з новими не порівнювати й незавершені `bf16-true` запуски не продовжувати.
+   1. Тест пам'яті `bf16-mixed` (ваги й AdamW у fp32, приблизно на 2–3 ГБ більше). Тимчасово поставити `training.limit_train_batches: 50` і `limit_val_batches: 5` та запустити `env/bin/python fine-tune/fine-tune.py` напряму: `main.py fine-tune` після навчання запустив би повну оцінку на test. Слідкувати за `nvidia-smi`. Якщо не вміщується, зменшити `batch_size.train`. Потім повернути ліміти до `1.0` і видалити тестову теку `<checkpoints>/model-whisper-uk_NN`.
+   2. `python main.py fine-tune --note "..."` на новому train. Кроків за епоху стане менше, тож зміниться й розклад LR.
+   3. Якщо вчитель змінився, перезібрати псевдомітки й оновити `multi_step.init`. Ланцюжок (`python main.py multi-step`) і ablation за оцінками теж перезапустити.
+   4. Переоцінити `evaluation/baseline/`, перебудувати `model_comparison.png` (`evaluation/batch-compare.py`) і повторно прогнати `datasets/leak-clean/score_common_voice_cleaned.py`.
 
 2. [ ] **Перевірка перетину сплітів у завантажувачі.** `load_configured_splits` або `load_split` має зупиняти запуск, якщо train перетинається з dev чи test за кліпом (`path`/ID). Спільні речення й диктори помилкою не вважати.
 
@@ -70,7 +71,7 @@
 
 5. [ ] **Відкриті пункти аудиту `REVIEW_FINDINGS.md` (2026-11-03).**
    1. Пункт 3: `fine-tune/checkpoints.py` досі має `range(5, 101, ...)`, тому чекпоінти student зберігаються на 5, 30, 55 і 80 % епохи.
-   2. Пункт 4: `precision: bf16-true` у `training` і `student`. Якщо декодер майже не вчиться, висновки ablation можуть бути спотворені.
+   2. Пункт 4 (`bf16-true`) виправлено в конфігах (`bf16-mixed`), лишилося перенавчити (пункт 1).
    3. Пункти 5–32 звірити з кодом і позначити виправлені.
 
 6. [ ] **Перевірка датасетів на витоки на сервері.** Виконати `env/bin/python datasets/leak-clean/check_leaks.py`, на Vast — з `ASR_CONFIG=config.vast.yaml`, і прочитати `output/leak-clean/report.md`. Для VOA потрібен `labels.csv` вчителя. Скрипт порівнює лише текст. Тому для хешу, імені файлу й диктора потрібен пункт 3, а пошук речень CV dev/test усередині псевдоміток VOA (README, розділ 3, крок 6) ще не реалізовано.

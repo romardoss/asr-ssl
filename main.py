@@ -18,6 +18,11 @@ file named by ``ASR_CONFIG`` (for example ``config.vast.yaml``).
         Fine-tune a student decoder on VOA slices and their pseudo-labels.
         Dev and the final test are Common Voice. Then the first-epoch and
         the final checkpoint are evaluated, as after fine-tune.
+    python main.py multi-step
+        Run the fine-tuning chain in ``multi_step`` (for example pseudo-labels
+        -> Common Voice -> pseudo-labels -> Common Voice). Each step starts
+        from the previous one, finished steps are skipped, and the steps are
+        evaluated into ``results.csv``. ``--dry-run`` prints the plan.
     python main.py evaluate
         Score ``model.id`` on each configured test set and on all of them
         combined. Writes results under ``paths.evaluation`` and adds a row
@@ -87,6 +92,9 @@ def main() -> None:
     fine_tune.add_argument("--note", default=None, help=NOTE_HELP)
     student = commands.add_parser("student", help="Fine-tune the student on VOA pseudo-labels.")
     student.add_argument("--note", default=None, help=NOTE_HELP)
+    multi_step = commands.add_parser("multi-step", help="Run the multi_step fine-tuning chain.")
+    multi_step.add_argument("--dry-run", action="store_true", help="Print the steps and commands without running them.")
+    multi_step.add_argument("--note", default=None, help=NOTE_HELP)
 
     evaluate = commands.add_parser("evaluate", help="Score each test set and the combined test set.")
     evaluate.add_argument(
@@ -120,6 +128,7 @@ def main() -> None:
         "pipeline": ROOT / "pipeline.py",
         "fine-tune": ROOT / "fine-tune" / "fine-tune.py",
         "student": ROOT / "fine-tune" / "fine-tune-student.py",
+        "multi-step": ROOT / "fine-tune" / "multi_step.py",
         "evaluate": ROOT / "evaluation" / "evaluate.py",
         "label": ROOT / "pseudo-labelling" / "label.py",
         "judge": ROOT / "pseudo-labelling" / "llm-as-a-judge" / "judge.py",
@@ -130,6 +139,7 @@ def main() -> None:
         "pipeline": ("dry_run",),
         "fine-tune": (),
         "student": (),
+        "multi-step": ("dry_run",),
         "evaluate": ("model",),
         "label": (),
         "judge": ("labels", "max_examples", "workers", "retries"),

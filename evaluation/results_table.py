@@ -39,6 +39,8 @@ RUN_COLUMNS = (
     "evaluated_at",
     "note",
     "model_type",
+    "chain",
+    "step",
     "model",
     "checkpoint",
     "epoch",
@@ -89,6 +91,8 @@ def _log_time(run: Path) -> str | None:
 def _model_type(kind: str | None, model: str | None, meta: dict, config: dict) -> str:
     if kind == "hf":
         return "pretrained"
+    if meta.get("stage") in {"fine-tune", "student"}:
+        return meta["stage"]
     student = config.get("student") if isinstance(config.get("student"), dict) else {}
     if "init" in meta or (model is not None and model == student.get("name")):
         return "student"
@@ -123,6 +127,8 @@ def run_row(run: Path, evaluation_dir: Path) -> dict | None:
         "evaluated_at": meta.get("evaluated_at") or _log_time(run),
         "note": meta.get("note"),
         "model_type": model_type,
+        "chain": meta.get("chain"),
+        "step": meta.get("step"),
         "model": model,
         "checkpoint": meta.get("checkpoint"),
         "epoch": meta.get("epoch"),

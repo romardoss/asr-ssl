@@ -65,7 +65,8 @@ from transformers import WhisperForConditionalGeneration, WhisperProcessor, get_
 
 from checkpoints import BatchFractionCheckpoint, student_checkpoint_run
 from common_voice import load_splits
-from run_meta import read_meta, run_note
+from init_weights import load_init_model
+from run_meta import chain_fields, read_meta, run_note
 
 sys.path.insert(0, str(ROOT / "pseudo-labelling"))
 from preprocess import Segment, decode, parse_timestamp, slice_audio
@@ -377,24 +378,6 @@ def _seed_worker(worker_id: int) -> None:
     random.seed(worker_seed)
 
 
-def load_init_model(init: str, base: str) -> WhisperForConditionalGeneration:
-    path = Path(init)
-    if path.is_file() and path.suffix == ".ckpt":
-        model = WhisperForConditionalGeneration.from_pretrained(base)
-        checkpoint = torch.load(path, map_location="cpu", weights_only=False)
-        state = checkpoint.get("state_dict", checkpoint)
-        weights = {
-            key.removeprefix("model."): value
-            for key, value in state.items()
-            if key.startswith("model.")
-        }
-        if not weights:
-            raise SystemExit(f"No model weights found in {path}")
-        model.load_state_dict(weights)
-        return model
-    return WhisperForConditionalGeneration.from_pretrained(init)
-
-
 class WhisperStudent(L.LightningModule):
     def __init__(
         self,
@@ -686,6 +669,8 @@ def main() -> None:
         # The student sees Common Voice only through its init model.
         "cv_train_rows": read_meta(Path(cfg.init).parent).get("cv_train_rows"),
         "labels": str(cfg.labels),
+        "stage": "student",
+        **chain_fields(),
         "note": run_note(ckpt_dir),
         "resumed_from": ckpt_path.name if ckpt_path else None,
     }

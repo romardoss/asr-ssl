@@ -5,7 +5,7 @@ Dev is scored during training. The test sets are not scored here:
 ``evaluation/evaluate_training.py`` scores the first-epoch and the final
 checkpoint with ``evaluate.py`` (``main.py fine-tune`` runs it after
 training), which also writes predictions, plots, and the ``results.csv`` row.
-The starting checkpoint, GPUs, batch sizes, and training hyperparameters come
+The starting weights (``model.id``, or ``training.init`` when set), GPUs, batch sizes, and training hyperparameters come
 from the same file.
 
 Checkpoints (model, optimizer, and scheduler) are written to
@@ -63,7 +63,8 @@ from torch.utils.data import DataLoader, Dataset
 from transformers import WhisperForConditionalGeneration, WhisperProcessor, get_linear_schedule_with_warmup
 
 from checkpoints import BatchFractionCheckpoint, numbered_checkpoint_dir, resume_checkpoint
-from run_meta import cv_train_rows, run_note
+from init_weights import load_init_model
+from run_meta import chain_fields, cv_train_rows, run_note
 from plot_metrics import write_plots
 from common_voice import checkpoint_root
 from speech_data import SpeechSplit, decode_audio, load_configured_splits as load_splits
@@ -396,7 +397,8 @@ def main() -> None:
     if lang_token_id is None or lang_token_id == unk_id:
         raise SystemExit(f"{cfg.model_id} has no language token {lang_token}")
 
-    model = WhisperForConditionalGeneration.from_pretrained(cfg.model_id)
+    # training.init continues from an earlier run (a multi-step chain); empty starts from model.id.
+    model = load_init_model(cfg.init or cfg.model_id, cfg.model_id)
     model.config.use_cache = False
 
     def make_loader(split: SpeechSplit, batch_size: int, shuffle: bool) -> DataLoader:
@@ -442,6 +444,9 @@ def main() -> None:
         "precision": cfg.precision,
         "frozen": "encoder",
         "trainable": "decoder",
+        "init": cfg.init,
+        "stage": "fine-tune",
+        **chain_fields(),
         "train_data": list(cfg.train_data),
         "cv_train_rows": cv_train_rows(cfg.common_voice_splits) if "common_voice" in cfg.train_data else None,
         "note": run_note(ckpt_dir),

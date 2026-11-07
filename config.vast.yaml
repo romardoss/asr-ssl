@@ -52,7 +52,8 @@ training:
   warmup_steps: 50
   max_epochs: 2
   num_workers: 4
-  precision: bf16-true
+  # bf16-mixed: bf16 compute, fp32 weights and AdamW state. bf16-true rounds updates of lr 1e-5 away.
+  precision: bf16-mixed
   seed: 42
   gradient_clip: 1.0
   weight_decay: 0.01
@@ -112,7 +113,8 @@ student:
   warmup_steps: 50
   max_epochs: 2
   num_workers: 4
-  precision: bf16-true
+  # bf16-mixed: bf16 compute, fp32 weights and AdamW state. bf16-true rounds updates of lr 1e-5 away.
+  precision: bf16-mixed
   seed: 42
   gradient_clip: 1.0
   weight_decay: 0.01
@@ -125,6 +127,28 @@ student:
   val_every: 0.25
   max_audio_seconds: 30.0
   max_label_tokens: 448
+
+# Multi-step fine-tuning: fine-tune/multi_step.py, or pipeline.multi_step.
+# Each step starts from the final checkpoint of the step before it; step 1 from init.
+# data: pseudo trains on VOA pseudo-labels with the student settings; accepted_mark keeps
+#   only those judge marks (leave it out to use every label).
+# data: [dataset, ...] trains on labelled sets from data.train names with the training settings.
+# A step may set max_epochs, learning_rate, and warmup_steps; anything else comes from its section.
+# Checkpoints: <paths.checkpoints>/<name>-s<N>-<data>_01. A finished step is skipped on a rerun,
+# so a new experiment needs a new name. name must start with student_.
+multi_step:
+  name: student_chain-m345-cv
+  init: /workspace/checkpoints/model-whisper-uk/model-whisper-uk-epoch00.ckpt
+  # What evaluate.py scores into results.csv: steps (final checkpoint of each step),
+  # all (also the first epoch of each step), last (end of the chain), none.
+  evaluate: steps
+  steps:
+    - data: pseudo
+      accepted_mark: [3, 4, 5]
+    - data: [common_voice]
+    - data: pseudo
+      accepted_mark: [3, 4, 5]
+    - data: [common_voice]
 
 # VOA preparation files: pipeline.language and pipeline.timestamps, plus the analysis scripts.
 # The final outputs of those stages are pseudo_labelling.ukrainian_meta and pseudo_labelling.timestamps.
@@ -142,7 +166,7 @@ voa_prep:
   # scripts/monitor/meta_stats.py figures
   meta_figures: output/eda
 
-# run, skip, or skip_if_present. student and evaluate are run or skip.
+# run, skip, or skip_if_present. student, evaluate, and multi_step are run or skip.
 # skip_if_present leaves a step out when its output file is already on disk:
 # language -> pseudo_labelling.ukrainian_meta
 # timestamps -> pseudo_labelling.timestamps
@@ -158,6 +182,7 @@ pipeline:
   clean: skip
   student: run
   evaluate: run
+  multi_step: skip
   chunk_processes: 6
   mms_model: facebook/mms-lid-256
   mms_batch_size: 16

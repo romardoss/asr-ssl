@@ -54,6 +54,7 @@ class Settings:
     max_label_tokens: int
     train_data: tuple[str, ...]
     dev_data: tuple[str, ...]
+    init: str | None
     test_data: tuple[str, ...]
 
 
@@ -75,6 +76,15 @@ def _bool(section: dict, key: str, label: str) -> bool:
     if not isinstance(value, bool):
         raise SystemExit(f"config.yaml {label} must be true or false")
     return value
+
+
+def _optional_text(section: dict, key: str, label: str) -> str | None:
+    value = section.get(key)
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return None
+    if not isinstance(value, str):
+        raise SystemExit(f"config.yaml {label} must be a string")
+    return value.strip()
 
 
 def _text(section: dict, key: str, label: str) -> str:
@@ -195,6 +205,7 @@ def load_settings(path: Path | None = None) -> Settings:
         train_data=_names(data, "train", "data.train"),
         dev_data=_names(data, "dev", "data.dev"),
         test_data=_names(data, "test", "data.test"),
+        init=_optional_text(training, "init", "training.init"),
     )
 
 

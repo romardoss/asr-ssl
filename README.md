@@ -6,6 +6,7 @@
 2. **Псевдомітки.** Вчитель розпізнає нерозмічене аудіо VOA (близько 2 300 год), попередньо відфільтроване за мовою й нарізане на шматки до 30 с.
 3. **Оцінка міток.** LLM-суддя ставить кожній псевдомітці оцінку від 0 до 5.
 4. **Студент.** Whisper навчається на псевдомітках, відібраних за оцінкою.
+   Навчання може йти ланцюжком кроків (секція `multi_step`), наприклад: псевдомітки -> Common Voice -> псевдомітки -> Common Voice.
 5. **Оцінка моделей.** Тестові набори: Common Voice, FLEURS, Ukrainian Dialects і тест Common Voice 10.
 
 Усі налаштування лежать у `config.yaml`, а для vast.ai — у `config.vast.yaml`.
@@ -14,6 +15,7 @@
 python main.py pipeline --dry-run              # показати етапи пайплайну
 python main.py fine-tune --note "коментар"     # навчити вчителя й оцінити його
 python main.py pipeline --note "коментар"      # псевдомітки -> студент -> оцінка
+python main.py multi-step --dry-run           # план багатокрокового навчання з multi_step
 python main.py evaluate --model /path/to.ckpt  # оцінити один чекпоінт
 ```
 

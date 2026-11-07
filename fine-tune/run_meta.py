@@ -22,6 +22,9 @@ CONFIG_NAME = "config.yaml"
 META_NAME = "meta.yaml"
 # main.py --note puts the comment here, so every child script of a run sees it.
 NOTE_ENV = "ASR_NOTE"
+# fine-tune/multi_step.py sets these for each step of a chain.
+CHAIN_ENV = "ASR_CHAIN"
+STEP_ENV = "ASR_STEP"
 CV_TRAIN_FILE = "train_validated.tsv"
 
 _EPOCH = re.compile(r"epoch(\d+)")
@@ -75,6 +78,15 @@ def run_note(folder: Path | None = None) -> str | None:
         if isinstance(stored, str) and stored.strip():
             return stored.strip()
     return None
+
+
+def chain_fields() -> dict:
+    """``chain`` and ``step`` of a multi-step run, or nothing outside a chain."""
+    chain = os.environ.get(CHAIN_ENV, "").strip()
+    step = os.environ.get(STEP_ENV, "").strip()
+    if not chain:
+        return {}
+    return {"chain": chain, "step": int(step) if step.isdigit() else step}
 
 
 def cv_train_rows(splits_dir: Path) -> int | None:

@@ -92,6 +92,9 @@ def parse_args() -> argparse.Namespace:
 
 # Fields of the checkpoint's own meta.yaml that the evaluation meta repeats.
 TRAINING_FIELDS = (
+    "stage",
+    "chain",
+    "step",
     "base",
     "init",
     "train_data",

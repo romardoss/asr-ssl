@@ -5,9 +5,11 @@ The config is ``config.yaml``, or the file ``ASR_CONFIG`` names.
 Language filtering and 30-second splits are skipped when their files are
 already present and the stage is ``skip_if_present``. The same switch covers
 pseudo-labelling (``labels.csv`` in the newest run) and the judge (``label_marks.csv``).
-Student tuning and evaluation are ``run`` or ``skip``. Evaluation scores the
+Student tuning, evaluation, and the multi-step chain are ``run`` or ``skip``. Evaluation scores the
 student's first-epoch checkpoint and its final one, and adds both to
-``<paths.evaluation>/results.csv``.
+``<paths.evaluation>/results.csv``. ``multi_step`` runs the chain in the
+``multi_step`` section (``fine-tune/multi_step.py``), which trains and
+evaluates its own steps.
 
     python pipeline.py
     python pipeline.py --dry-run
@@ -54,6 +56,7 @@ class PipelineSettings:
     clean: str
     student: str
     evaluate: str
+    multi_step: str
     chunk_processes: int
     mms_model: str
     mms_batch_size: int
@@ -135,6 +138,7 @@ def load_pipeline(path: Path | None = None) -> PipelineSettings:
         clean=_mode(section, "clean", FILE_MODES),
         student=_mode(section, "student", TAIL_MODES),
         evaluate=_mode(section, "evaluate", TAIL_MODES),
+        multi_step=_mode(section, "multi_step", TAIL_MODES),
         chunk_processes=_positive_int(section, "chunk_processes", "pipeline.chunk_processes"),
         mms_model=_text(section, "mms_model", "pipeline.mms_model"),
         mms_batch_size=_positive_int(section, "mms_batch_size", "pipeline.mms_batch_size"),
@@ -360,6 +364,12 @@ def main() -> None:
         )
     else:
         note("evaluate", "skip", str(checkpoint))
+
+    if cfg.multi_step == "run":
+        note("multi_step", "run", "chain from the multi_step section")
+        execute([py, str(ROOT / "fine-tune" / "multi_step.py")], env, args.dry_run)
+    else:
+        note("multi_step", "skip", "multi_step section")
 
 
 if __name__ == "__main__":
