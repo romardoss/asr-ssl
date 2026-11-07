@@ -49,7 +49,6 @@ class Settings:
     baseline_eval: bool
     limit_train_batches: int | float
     limit_val_batches: int | float
-    limit_test_batches: int | float
     checkpoint_every: float
     max_audio_seconds: float
     max_label_tokens: int
@@ -190,7 +189,6 @@ def load_settings(path: Path | None = None) -> Settings:
         baseline_eval=_bool(training, "baseline_eval", "training.baseline_eval"),
         limit_train_batches=_limit(training, "limit_train_batches", "training.limit_train_batches"),
         limit_val_batches=_limit(training, "limit_val_batches", "training.limit_val_batches"),
-        limit_test_batches=_limit(training, "limit_test_batches", "training.limit_test_batches"),
         checkpoint_every=_fraction(training, "checkpoint_every", "training.checkpoint_every"),
         max_audio_seconds=_positive_float(data, "max_audio_seconds", "data.max_audio_seconds"),
         max_label_tokens=_positive_int(data, "max_label_tokens", "data.max_label_tokens"),

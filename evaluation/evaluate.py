@@ -6,17 +6,25 @@ checkpoint loaded on top of ``model.id``. GPUs, language, and the batch size
 come from that same file.
 
 Results and plots are written to ``<paths.evaluation>/<model>-XX/``.
-A checkpoint test also stores ``config.yaml`` and ``meta.yaml`` there.
-An original Whisper id stores ``meta.yaml`` with the model name.
+A checkpoint test also stores ``config.yaml`` and ``meta.yaml`` there; the meta
+file repeats the training fields of the checkpoint (note, init, train data,
+Common Voice train rows). An original Whisper id stores ``meta.yaml`` with the
+model name. Each run then adds its row to ``<paths.evaluation>/results.csv``.
+
+``--note`` (or ``ASR_NOTE``, set by ``main.py --note``) is a comment for the
+table. Without it the note given when the checkpoint was trained is used.
 
     python evaluation/evaluate.py
     python evaluation/evaluate.py --model /path/to/last.ckpt
+    python evaluation/evaluate.py --model /path/to/last.ckpt --note "lr 1e-5, clean train"
 """
 
 from __future__ import annotations
 
 import argparse
 import importlib.util
+import subprocess
+from datetime import datetime
 import json
 import logging
 import os
@@ -64,6 +72,7 @@ def _load_fine_tune():
 ft = _load_fine_tune()
 
 import run_meta
+import results_table
 import jiwer
 import pandas as pd
 import torch
@@ -77,7 +86,51 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Checkpoint (.ckpt) or model directory. Default: model.id from config.yaml.",
     )
+    parser.add_argument("--note", default=None, help="Comment for this run in results.csv.")
     return parser.parse_args()
+
+
+# Fields of the checkpoint's own meta.yaml that the evaluation meta repeats.
+TRAINING_FIELDS = (
+    "base",
+    "init",
+    "train_data",
+    "cv_train_rows",
+    "filter_marks",
+    "accepted_mark",
+    "labels",
+    "learning_rate",
+    "max_epochs",
+    "seed",
+)
+
+
+def git_commit() -> str | None:
+    try:
+        completed = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"], cwd=ROOT, capture_output=True, text=True, check=False
+        )
+    except OSError:
+        return None
+    commit = completed.stdout.strip()
+    return commit or None
+
+
+def evaluation_meta(args: argparse.Namespace, kind: str, source: str, fields: dict) -> dict:
+    """Meta of this run: training fields of the checkpoint, then the test fields."""
+    folder = None
+    if kind == "ckpt":
+        folder = Path(source).parent
+    elif kind == "dir":
+        folder = Path(source)
+    trained = run_meta.read_meta(folder) if folder is not None else {}
+    meta = {key: trained[key] for key in TRAINING_FIELDS if key in trained}
+    meta.update(fields)
+    meta["evaluated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    meta["git_commit"] = git_commit()
+    note = (args.note or "").strip() or run_meta.run_note(folder)
+    meta["note"] = note
+    return meta
 
 
 def resolve_source(raw: str | None) -> tuple[str, str]:
@@ -477,6 +530,7 @@ def main() -> None:
     )
     if config_source is not None:
         run_meta.copy_config(run_dir, config_source, replace=True)
+    meta = evaluation_meta(args, kind, source, meta)
     run_meta.write_meta(run_dir, meta)
     logging.basicConfig(
         level=logging.INFO,
@@ -541,6 +595,8 @@ def main() -> None:
     log.info("wrote %s", predictions_path)
     for path in written:
         log.info("wrote %s", path)
+    table = results_table.add_run(run_dir, ft.SETTINGS.evaluation_dir)
+    log.info("updated %s", table)
 
 
 if __name__ == "__main__":

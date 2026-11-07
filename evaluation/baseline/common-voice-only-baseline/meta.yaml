@@ -1,0 +1,8 @@
+model: model-whisper-uk
+checkpoint: model-whisper-uk-epoch00.ckpt
+epoch: 0
+checkpoint_dir: /mnt/data/rberehun/checkpoints/model-whisper-uk
+base_model: openai/whisper-medium
+language: uk
+cv_train_rows: 73415
+evaluated_at: '2026-10-26 21:12:35'

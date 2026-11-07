@@ -11,16 +11,23 @@ file named by ``ASR_CONFIG`` (for example ``config.vast.yaml``).
         Print those stages and the commands they would start.
     python main.py fine-tune
         Fine-tune the Whisper decoder on ``data.train``. The encoder stays
-        frozen. Dev is scored during training; each ``data.test`` set is
-        scored after it.
+        frozen. Dev is scored during training. Then the first-epoch and the
+        final checkpoint are scored on ``data.test`` by ``evaluate.py`` and
+        added to ``<paths.evaluation>/results.csv``.
     python main.py student
         Fine-tune a student decoder on VOA slices and their pseudo-labels.
-        Dev and the final test are Common Voice.
+        Dev and the final test are Common Voice. Then the first-epoch and
+        the final checkpoint are evaluated, as after fine-tune.
     python main.py evaluate
         Score ``model.id`` on each configured test set and on all of them
-        combined. Writes results under ``paths.evaluation``.
+        combined. Writes results under ``paths.evaluation`` and adds a row
+        to ``results.csv`` there.
     python main.py evaluate --model /path/to/last.ckpt
         Same scoring, loading that checkpoint on top of ``model.id``.
+    python main.py fine-tune --note "only common_voice, lr 1e-5"
+        ``--note`` (pipeline, fine-tune, student, evaluate) is a comment
+        stored beside the checkpoints and in the ``note`` column of
+        ``results.csv``. A resumed run keeps the note of its first start.
     python main.py label
         Transcribe Ukrainian VOA slices with ``pseudo_labelling.teacher_model``.
         Appends ``labels.csv`` under ``pseudo_labelling.output_dir``.
@@ -37,11 +44,15 @@ file named by ``ASR_CONFIG`` (for example ``config.vast.yaml``).
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
+# Read by fine-tune/run_meta.py in every child script.
+NOTE_ENV = "ASR_NOTE"
+NOTE_HELP = "Comment for this run, stored in meta.yaml and in results.csv."
 
 
 def _run(script: Path, extra: list[str]) -> None:
@@ -70,9 +81,12 @@ def main() -> None:
 
     pipeline = commands.add_parser("pipeline", help="Run the configured pipeline stages.")
     pipeline.add_argument("--dry-run", action="store_true", help="Print each stage without starting it.")
+    pipeline.add_argument("--note", default=None, help=NOTE_HELP)
 
-    commands.add_parser("fine-tune", help="Fine-tune the Whisper decoder on data.train.")
-    commands.add_parser("student", help="Fine-tune the student on VOA pseudo-labels.")
+    fine_tune = commands.add_parser("fine-tune", help="Fine-tune the Whisper decoder on data.train.")
+    fine_tune.add_argument("--note", default=None, help=NOTE_HELP)
+    student = commands.add_parser("student", help="Fine-tune the student on VOA pseudo-labels.")
+    student.add_argument("--note", default=None, help=NOTE_HELP)
 
     evaluate = commands.add_parser("evaluate", help="Score each test set and the combined test set.")
     evaluate.add_argument(
@@ -80,6 +94,7 @@ def main() -> None:
         default=None,
         help="Checkpoint (.ckpt) or model directory. Default: model.id from config.yaml.",
     )
+    evaluate.add_argument("--note", default=None, help=NOTE_HELP)
 
     commands.add_parser("label", help="Pseudo-label VOA slices with the teacher model.")
 
@@ -121,7 +136,13 @@ def main() -> None:
         "plot": ("model_name", "version", "watch", "interval"),
         "marks": ("marks",),
     }
+    note = (getattr(args, "note", None) or "").strip()
+    if note:
+        os.environ[NOTE_ENV] = note
     _run(scripts[args.command], _present(args, *forwarded[args.command]))
+    # A finished training run is scored right away: first epoch and final checkpoint.
+    if args.command in {"fine-tune", "student"}:
+        _run(ROOT / "evaluation" / "evaluate_training.py", ["--stage", args.command])
 
 
 if __name__ == "__main__":

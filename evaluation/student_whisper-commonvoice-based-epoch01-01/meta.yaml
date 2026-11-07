@@ -4,3 +4,5 @@ epoch: 1
 checkpoint_dir: /mnt/data/rberehun/checkpoints/student_whisper-commonvoice-based_01
 base_model: openai/whisper-medium
 language: uk
+cv_train_rows: 73415
+evaluated_at: '2026-11-04 19:14:43'

@@ -65,6 +65,7 @@ from transformers import WhisperForConditionalGeneration, WhisperProcessor, get_
 
 from checkpoints import BatchFractionCheckpoint, student_checkpoint_run
 from common_voice import load_splits
+from run_meta import read_meta, run_note
 
 sys.path.insert(0, str(ROOT / "pseudo-labelling"))
 from preprocess import Segment, decode, parse_timestamp, slice_audio
@@ -680,6 +681,11 @@ def main() -> None:
         "trainable": "decoder",
         "filter_marks": cfg.filter_marks,
         "accepted_mark": list(cfg.accepted_mark),
+        "train_data": ["voa_pseudo_labels"],
+        # The student sees Common Voice only through its init model.
+        "cv_train_rows": read_meta(Path(cfg.init).parent).get("cv_train_rows"),
+        "labels": str(cfg.labels),
+        "note": run_note(ckpt_dir),
         "resumed_from": ckpt_path.name if ckpt_path else None,
     }
     checkpoint_callback = BatchFractionCheckpoint(

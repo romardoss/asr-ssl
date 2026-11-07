@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import sys
@@ -19,6 +20,9 @@ from project_config import CONFIG_PATH  # noqa: E402
 # whichever file ASR_CONFIG selected.
 CONFIG_NAME = "config.yaml"
 META_NAME = "meta.yaml"
+# main.py --note puts the comment here, so every child script of a run sees it.
+NOTE_ENV = "ASR_NOTE"
+CV_TRAIN_FILE = "train_validated.tsv"
 
 _EPOCH = re.compile(r"epoch(\d+)")
 _BATCH = re.compile(r"batch(\d+)pct")
@@ -47,6 +51,40 @@ def write_meta(destination: Path, fields: dict) -> None:
     clean = {key: value for key, value in fields.items() if value is not None}
     text = yaml.safe_dump(clean, sort_keys=False, allow_unicode=True)
     (destination / META_NAME).write_text(text, encoding="utf-8")
+
+
+def read_meta(folder: Path) -> dict:
+    """Fields of ``meta.yaml`` in ``folder``, or an empty dict."""
+    path = Path(folder) / META_NAME
+    if not path.is_file():
+        return {}
+    loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
+    return loaded if isinstance(loaded, dict) else {}
+
+
+def run_note(folder: Path | None = None) -> str | None:
+    """The ``--note`` of this run, or the note already stored in ``folder``.
+
+    A resumed run started without ``--note`` keeps the note of the first start.
+    """
+    note = os.environ.get(NOTE_ENV, "").strip()
+    if note:
+        return note
+    if folder is not None:
+        stored = read_meta(folder).get("note")
+        if isinstance(stored, str) and stored.strip():
+            return stored.strip()
+    return None
+
+
+def cv_train_rows(splits_dir: Path) -> int | None:
+    """Rows in the Common Voice train TSV. It marks which train version a model saw."""
+    path = Path(splits_dir) / CV_TRAIN_FILE
+    if not path.is_file():
+        return None
+    with path.open("rb") as handle:
+        lines = sum(1 for line in handle if line.strip())
+    return max(lines - 1, 0)
 
 
 def checkpoint_fields(path: Path) -> dict:

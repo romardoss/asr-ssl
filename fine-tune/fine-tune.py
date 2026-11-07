@@ -1,8 +1,11 @@
 """Fine-tune a Whisper decoder on the labelled Ukrainian speech in ``config.yaml``.
 
 The encoder stays frozen. ``data.train`` and ``data.dev`` are concatenated.
-``data.test`` is scored separately for each dataset and once combined. The
-starting checkpoint, GPUs, batch sizes, and training hyperparameters come
+Dev is scored during training. The test sets are not scored here:
+``evaluation/evaluate_training.py`` scores the first-epoch and the final
+checkpoint with ``evaluate.py`` (``main.py fine-tune`` runs it after
+training), which also writes predictions, plots, and the ``results.csv`` row.
+The starting checkpoint, GPUs, batch sizes, and training hyperparameters come
 from the same file.
 
 Checkpoints (model, optimizer, and scheduler) are written to
@@ -60,6 +63,7 @@ from torch.utils.data import DataLoader, Dataset
 from transformers import WhisperForConditionalGeneration, WhisperProcessor, get_linear_schedule_with_warmup
 
 from checkpoints import BatchFractionCheckpoint, numbered_checkpoint_dir, resume_checkpoint
+from run_meta import cv_train_rows, run_note
 from plot_metrics import write_plots
 from common_voice import checkpoint_root
 from speech_data import SpeechSplit, decode_audio, load_configured_splits as load_splits
@@ -247,12 +251,7 @@ class WhisperFineTuner(L.LightningModule):
         self.model.generation_config.forced_decoder_ids = None
         self.val_references: list[str] = []
         self.val_hypotheses: list[str] = []
-        self.test_sources: list[str] = []
-        self.test_references: list[str] = []
-        self.test_hypotheses: list[str] = []
-        self.test_source_order: list[str] = []
         self.val_metrics: dict[str, float] = {}
-        self.test_metrics: dict[str, dict[str, float]] = {}
 
     def train(self, mode: bool = True):
         super().train(mode)
@@ -310,19 +309,6 @@ class WhisperFineTuner(L.LightningModule):
         self.val_hypotheses.extend(hypotheses)
         return loss
 
-    def test_step(self, batch, batch_idx):
-        loss = self.model(
-            input_features=batch["input_features"],
-            attention_mask=batch["attention_mask"],
-            labels=batch["labels"],
-        ).loss
-        self.log("test_loss", loss, prog_bar=True, on_epoch=True, sync_dist=True)
-        references, hypotheses = self._transcribe(batch)
-        self.test_sources.extend(batch["source"])
-        self.test_references.extend(references)
-        self.test_hypotheses.extend(hypotheses)
-        return loss
-
     def _gather_texts(self, references: list[str], hypotheses: list[str]) -> tuple[list[str], list[str]]:
         if self.trainer.world_size == 1:
             return references, hypotheses
@@ -346,40 +332,6 @@ class WhisperFineTuner(L.LightningModule):
         self.val_metrics = self._log_corpus("val", self.val_references, self.val_hypotheses)
         self.val_references.clear()
         self.val_hypotheses.clear()
-
-    def on_test_epoch_end(self):
-        sources, references, hypotheses = self._gather_test()
-        self.test_metrics = metrics_by_source(sources, references, hypotheses, self.test_source_order)
-        for dataset, metrics in self.test_metrics.items():
-            # The weighted score keeps the plain test_* names that plot_metrics reads.
-            prefix = "test" if dataset == "combined_weighted" else f"test_{dataset}"
-            for name, value in metrics.items():
-                if name in {"clips", "datasets"}:
-                    continue
-                self.log(
-                    f"{prefix}_{name}",
-                    value,
-                    prog_bar=dataset == "combined_weighted" and name in {"wer", "cer"},
-                    sync_dist=True,
-                )
-        self.test_sources.clear()
-        self.test_references.clear()
-        self.test_hypotheses.clear()
-
-    def _gather_test(self) -> tuple[list[str], list[str], list[str]]:
-        if self.trainer.world_size == 1:
-            return self.test_sources, self.test_references, self.test_hypotheses
-        gathered_sources: list[list[str] | None] = [None] * self.trainer.world_size
-        gathered_refs: list[list[str] | None] = [None] * self.trainer.world_size
-        gathered_hyps: list[list[str] | None] = [None] * self.trainer.world_size
-        torch.distributed.all_gather_object(gathered_sources, self.test_sources)
-        torch.distributed.all_gather_object(gathered_refs, self.test_references)
-        torch.distributed.all_gather_object(gathered_hyps, self.test_hypotheses)
-        return (
-            [text for part in gathered_sources if part for text in part],
-            [text for part in gathered_refs if part for text in part],
-            [text for part in gathered_hyps if part for text in part],
-        )
 
     def configure_optimizers(self):
         parameters = [parameter for parameter in self.model.parameters() if parameter.requires_grad]
@@ -463,7 +415,6 @@ def main() -> None:
 
     train_loader = make_loader(splits["train"], cfg.train_batch_size, shuffle=True)
     dev_loader = make_loader(splits["dev"], cfg.testing_after_train_batch_size, shuffle=False)
-    test_loader = make_loader(splits["test"], cfg.testing_after_train_batch_size, shuffle=False)
 
     module = WhisperFineTuner(
         model,
@@ -473,7 +424,6 @@ def main() -> None:
         warmup_steps=cfg.warmup_steps,
         weight_decay=cfg.weight_decay,
     )
-    module.test_source_order = list(splits["test"].sources)
     frozen = sum(parameter.numel() for parameter in module.model.parameters() if not parameter.requires_grad)
     trainable = sum(parameter.numel() for parameter in module.model.parameters() if parameter.requires_grad)
     log.info("frozen encoder parameters: %d", frozen)
@@ -491,6 +441,9 @@ def main() -> None:
         "max_epochs": cfg.max_epochs,
         "frozen": "encoder",
         "trainable": "decoder",
+        "train_data": list(cfg.train_data),
+        "cv_train_rows": cv_train_rows(cfg.common_voice_splits) if "common_voice" in cfg.train_data else None,
+        "note": run_note(ckpt_dir),
         "resumed_from": ckpt_path.name if ckpt_path else None,
     }
     checkpoint_callback = BatchFractionCheckpoint(
@@ -513,7 +466,6 @@ def main() -> None:
         num_sanity_val_steps=0,
         limit_train_batches=cfg.limit_train_batches,
         limit_val_batches=cfg.limit_val_batches,
-        limit_test_batches=cfg.limit_test_batches,
         enable_progress_bar=True,
     )
 
@@ -526,7 +478,6 @@ def main() -> None:
         baseline_metrics = dict(module.val_metrics)
 
     trainer.fit(module, train_loader, dev_loader, ckpt_path=ckpt_path)
-    trainer.test(module, dataloaders=test_loader)
 
     if trainer.is_global_zero:
         payload = {
@@ -545,7 +496,6 @@ def main() -> None:
             "resumed_from": str(ckpt_path) if ckpt_path else None,
             "dev_before_training": baseline_metrics,
             "dev": module.val_metrics,
-            "test": module.test_metrics,
         }
         destination = output_dir / "results.json"
         write_results(destination, payload)
@@ -554,8 +504,6 @@ def main() -> None:
         for path in write_plots(Path(logger.log_dir)):
             log.info("wrote %s", path)
         log.info("dev %s", module.val_metrics)
-        for name, metrics in module.test_metrics.items():
-            log.info("test %s %s", name, metrics)
 
 
 if __name__ == "__main__":

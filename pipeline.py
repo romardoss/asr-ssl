@@ -5,7 +5,9 @@ The config is ``config.yaml``, or the file ``ASR_CONFIG`` names.
 Language filtering and 30-second splits are skipped when their files are
 already present and the stage is ``skip_if_present``. The same switch covers
 pseudo-labelling (``labels.csv`` in the newest run) and the judge (``label_marks.csv``).
-Student tuning and evaluation are ``run`` or ``skip``.
+Student tuning and evaluation are ``run`` or ``skip``. Evaluation scores the
+student's first-epoch checkpoint and its final one, and adds both to
+``<paths.evaluation>/results.csv``.
 
     python pipeline.py
     python pipeline.py --dry-run
@@ -350,9 +352,9 @@ def main() -> None:
     if cfg.evaluate == "run":
         if not args.dry_run and not present(checkpoint):
             raise SystemExit(f"Student checkpoint not found: {checkpoint}")
-        note("evaluate", "run", str(checkpoint))
+        note("evaluate", "run", f"first epoch and final checkpoint in {checkpoint.parent}")
         execute(
-            [py, str(ROOT / "evaluation" / "evaluate.py"), "--model", str(checkpoint)],
+            [py, str(ROOT / "evaluation" / "evaluate_training.py"), "--checkpoint-dir", str(checkpoint.parent)],
             env,
             args.dry_run,
         )
