@@ -108,9 +108,17 @@ def metrics_by_source(
     hypotheses: list[str],
     order: list[str],
 ) -> dict[str, dict[str, float]]:
-    """Combined corpus metrics plus one entry for each dataset in ``order``."""
-    scored = {"combined": corpus_metrics(references, hypotheses)}
-    scored["combined"]["clips"] = float(len(references))
+    """Combined corpus metrics plus one entry for each dataset in ``order``.
+
+    ``combined_weighted`` pools every clip, so each dataset is weighted by its
+    word (WER) or character (CER) count and large datasets dominate it.
+    ``combined_mean`` is the plain mean of the per-dataset rates, so each
+    dataset counts equally. It is added only when there are at least two
+    datasets.
+    """
+    scored = {"combined_weighted": corpus_metrics(references, hypotheses)}
+    scored["combined_weighted"]["clips"] = float(len(references))
+    per_dataset: dict[str, dict[str, float]] = {}
     for name in order:
         chosen = [
             (reference, hypothesis)
@@ -122,8 +130,30 @@ def metrics_by_source(
         refs, hyps = zip(*chosen)
         metrics = corpus_metrics(list(refs), list(hyps))
         metrics["clips"] = float(len(chosen))
-        scored[name] = metrics
+        per_dataset[name] = metrics
+    mean = mean_metrics(per_dataset)
+    if mean:
+        scored["combined_mean"] = mean
+    scored.update(per_dataset)
     return scored
+
+
+MEAN_RATES = ("wer", "cer", "mer", "wil", "wip")
+
+
+def mean_metrics(per_dataset: dict[str, dict[str, float]]) -> dict[str, float]:
+    """Plain mean of each rate over datasets. Empty for fewer than two datasets."""
+    scored = [metrics for metrics in per_dataset.values() if metrics]
+    if len(scored) < 2:
+        return {}
+    mean = {}
+    for rate in MEAN_RATES:
+        values = [metrics[rate] for metrics in scored if rate in metrics]
+        if len(values) == len(scored):
+            mean[rate] = sum(values) / len(values)
+    mean["datasets"] = float(len(scored))
+    mean["clips"] = sum(metrics["clips"] for metrics in scored)
+    return mean
 
 
 def load_waveform(path: str) -> tuple[torch.Tensor, int]:
@@ -321,14 +351,15 @@ class WhisperFineTuner(L.LightningModule):
         sources, references, hypotheses = self._gather_test()
         self.test_metrics = metrics_by_source(sources, references, hypotheses, self.test_source_order)
         for dataset, metrics in self.test_metrics.items():
-            prefix = "test" if dataset == "combined" else f"test_{dataset}"
+            # The weighted score keeps the plain test_* names that plot_metrics reads.
+            prefix = "test" if dataset == "combined_weighted" else f"test_{dataset}"
             for name, value in metrics.items():
-                if name == "clips":
+                if name in {"clips", "datasets"}:
                     continue
                 self.log(
                     f"{prefix}_{name}",
                     value,
-                    prog_bar=dataset == "combined" and name in {"wer", "cer"},
+                    prog_bar=dataset == "combined_weighted" and name in {"wer", "cer"},
                     sync_dist=True,
                 )
         self.test_sources.clear()

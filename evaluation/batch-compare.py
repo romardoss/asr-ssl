@@ -33,7 +33,16 @@ plt.rcParams.update(
     }
 )
 
-DATASET_ORDER = ("combined", "common_voice", "fleurs", "ukr_dialects", "cv10_test")
+DATASET_ORDER = (
+    "combined_weighted",
+    "combined_mean",
+    "common_voice",
+    "fleurs",
+    "ukr_dialects",
+    "cv10_test",
+)
+# Older results.json files call the pooled score "combined".
+LEGACY_NAMES = {"combined": "combined_weighted"}
 COLORS = (
     "#9b2226",
     "#1d4e89",
@@ -75,11 +84,32 @@ def load_runs(folder: Path) -> list[tuple[str, dict[str, dict[str, float]]]]:
             }
             if values:
                 rates[name] = values
+        rates = {LEGACY_NAMES.get(name, name): values for name, values in rates.items()}
+        add_mean(rates)
         if rates:
             runs.append((path.name, rates))
     if not runs:
         raise SystemExit(f"No results.json with test set error rates in {folder}")
     return runs
+
+
+def add_mean(rates: dict[str, dict[str, float]]) -> None:
+    """Fill ``combined_mean`` for older results that lack it.
+
+    It is the plain mean over datasets, so each dataset counts equally.
+    """
+    if "combined_mean" in rates:
+        return
+    datasets = [values for name, values in rates.items() if not name.startswith("combined")]
+    if len(datasets) < 2:
+        return
+    mean = {
+        metric: sum(values[metric] for values in datasets) / len(datasets)
+        for metric in ("wer", "cer")
+        if all(metric in values for values in datasets)
+    }
+    if mean:
+        rates["combined_mean"] = mean
 
 
 def dataset_names(runs: list[tuple[str, dict[str, dict[str, float]]]]) -> list[str]:
@@ -95,7 +125,7 @@ def write_chart(folder: Path, runs: list[tuple[str, dict[str, dict[str, float]]]
     figure, axes = plt.subplots(
         1,
         2,
-        figsize=(max(12, len(datasets) * 2.6), 5.8),
+        figsize=(max(12, len(datasets) * 3.2), 5.8),
         sharex=True,
     )
     for axis, metric, title in zip(axes, ("wer", "cer"), ("WER (%)", "CER (%)")):

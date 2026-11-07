@@ -5,7 +5,8 @@
   "language": "uk",
   "split": "test",
   "clips": {
-    "combined": 18345.0,
+    "combined_weighted": 18345.0,
+    "combined_mean": 18345.0,
     "common_voice": 10956.0,
     "fleurs": 750.0,
     "ukr_dialects": 3435.0,
@@ -30,7 +31,7 @@
     "clips": 18345.0
   },
   "test_sets": {
-    "combined": {
+    "combined_weighted": {
       "wer": 0.34640987886511837,
       "cer": 0.1593945846182501,
       "mer": 0.3276609689443902,
@@ -41,6 +42,15 @@
       "insertions": 9249.0,
       "hits": 114894.0,
       "n": 18345.0,
+      "clips": 18345.0
+    },
+    "combined_mean": {
+      "wer": 0.3110236543850053,
+      "cer": 0.15240419436033506,
+      "mer": 0.28432607618325156,
+      "wil": 0.41442296342766616,
+      "wip": 0.5855770365723338,
+      "datasets": 4.0,
       "clips": 18345.0
     },
     "common_voice": {

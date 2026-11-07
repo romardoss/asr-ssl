@@ -416,9 +416,12 @@ def write_dataset_chart(run_dir: Path, scored: dict[str, dict[str, float]]) -> P
     names = [name for name in scored if "wer" in scored[name] and "cer" in scored[name]]
     if len(names) < 2:
         return None
+    # combined_weighted pools all clips. combined_mean weights each dataset equally.
+    aggregates = [name for name in ("combined_weighted", "combined_mean") if name in names]
+    names = aggregates + [name for name in names if name not in aggregates]
     positions = list(range(len(names)))
     width = 0.36
-    figure, axis = plt.subplots(figsize=(max(8, len(names) * 1.6), 5.5))
+    figure, axis = plt.subplots(figsize=(max(8, len(names) * 2.1), 5.5))
     wer_bars = axis.bar(
         [position - width / 2 for position in positions],
         [scored[name]["wer"] * 100 for name in names],
@@ -444,6 +447,8 @@ def write_dataset_chart(run_dir: Path, scored: dict[str, dict[str, float]]) -> P
                 ha="center",
                 fontsize=9,
             )
+    if aggregates and len(aggregates) < len(names):
+        axis.axvline(len(aggregates) - 0.5, color="#888888", linestyle="--", linewidth=1)
     axis.set_xticks(positions, names)
     axis.set_ylabel("error rate (%)")
     axis.set_title("WER and CER by test set")
@@ -499,7 +504,7 @@ def main() -> None:
     )
     datasets = [frame.source_at(index) for index in range(len(frame))]
     scored = ft.metrics_by_source(datasets, references, hypotheses, list(frame.sources))
-    metrics = scored["combined"]
+    metrics = scored["combined_weighted"]
     predictions = pd.DataFrame(
         {
             "dataset": datasets,
