@@ -4,7 +4,10 @@ Training rows are the slices in ``student.labels``. When ``student.filter_marks`
 is true, a row is kept only if its judge mark in ``student.marks`` is one of
 ``student.accepted_mark``. ``latest`` in either path means the newest file for
 ``pseudo_labelling.teacher_model``. Audio is decoded and cut
-with the same functions as pseudo-labelling. Dev is scored every
+with the same functions as pseudo-labelling. ``student.extra_train`` adds
+labelled train sets (``data.train`` names, e.g. ``common_voice``) to the same
+run: their clips are shuffled into batches of their own that come after all
+VOA batches, so every epoch ends on them. The marks filter does not apply. Dev is scored every
 ``student.val_every`` fraction of an epoch, and the Common Voice test split
 is scored once after training. Checkpoints go to
 ``paths.checkpoints/<student.name>_01/``, then ``_02``, and so on, every
@@ -59,14 +62,16 @@ import torchaudio
 from lightning.pytorch.callbacks import LearningRateMonitor
 from lightning.pytorch.loggers import CSVLogger
 from lightning.pytorch.strategies import DDPStrategy
-from torch.utils.data import DataLoader, Dataset, Sampler
+from torch.utils.data import ConcatDataset, DataLoader, Dataset, Sampler
 from tqdm import tqdm
 from transformers import WhisperForConditionalGeneration, WhisperProcessor, get_linear_schedule_with_warmup
 
 from checkpoints import BatchFractionCheckpoint, student_checkpoint_run
 from common_voice import load_splits
 from init_weights import load_init_model
-from run_meta import chain_fields, read_meta, run_note
+from run_meta import chain_fields, cv_train_rows, read_meta, run_note
+from settings import load_settings
+from speech_data import SpeechSplit, load_train_split
 
 sys.path.insert(0, str(ROOT / "pseudo-labelling"))
 from preprocess import Segment, decode, parse_timestamp, slice_audio
@@ -221,12 +226,25 @@ class RowGroupSampler(Sampler[int]):
 
     Row groups stay in one stretch, so a worker can read a parquet group once
     and decode each file once. Each GPU receives an equal contiguous share.
+
+    ``extra`` labelled clips (indexes ``extra_offset`` and up) are shuffled
+    into batches of their own that come after every VOA batch, so each epoch
+    ends on the labelled data. Each GPU gets an equal share of both parts.
     """
 
-    def __init__(self, groups: list[list[list[int]]], batch_size: int, seed: int):
+    def __init__(
+        self,
+        groups: list[list[list[int]]],
+        batch_size: int,
+        seed: int,
+        extra: int = 0,
+        extra_offset: int = 0,
+    ):
         self.groups = groups
         self.batch_size = batch_size
         self.seed = seed
+        self.extra = extra
+        self.extra_offset = extra_offset
         self.epoch = 0
 
     def set_epoch(self, epoch: int) -> None:
@@ -241,14 +259,21 @@ class RowGroupSampler(Sampler[int]):
             files = [list(indexes) for indexes in self.groups[group_index]]
             rng.shuffle(files)
             flat.extend(index for indexes in files for index in indexes)
+        labelled = list(range(self.extra_offset, self.extra_offset + self.extra))
+        rng.shuffle(labelled)
         world = max(1, int(os.environ.get("WORLD_SIZE", "1")))
         rank = int(os.environ.get("RANK", "0"))
-        usable = (len(flat) // (world * self.batch_size)) * (world * self.batch_size)
-        if usable < world * self.batch_size:
+        voa = self._share(flat, world, rank)
+        if not voa:
             raise RuntimeError("Not enough student slices to fill one batch on every GPU")
-        per_rank = usable // world
-        start = rank * per_rank
-        return flat[start : start + per_rank]
+        # The labelled batches go last in the epoch.
+        return voa + self._share(labelled, world, rank)
+
+    def _share(self, indexes: list[int], world: int, rank: int) -> list[int]:
+        """This rank's contiguous share of whole batches."""
+        size = self.batch_size
+        per_rank = (len(indexes) // (world * size)) * size
+        return indexes[rank * per_rank : (rank + 1) * per_rank]
 
     def __iter__(self):
         return iter(self._indices())
@@ -351,6 +376,45 @@ class CommonVoiceDataset(Dataset):
             return_attention_mask=True,
         )
         text_ids = self.tokenizer(str(row["sentence"]), add_special_tokens=False).input_ids
+        text_ids = text_ids[: MAX_LABEL_TOKENS - len(self.prefix_ids) - 1]
+        labels = self.prefix_ids + text_ids + [self.eos_token_id]
+        return {
+            "input_features": extracted.input_features[0],
+            "attention_mask": extracted.attention_mask[0],
+            "labels": labels,
+        }
+
+
+class LabelledDataset(Dataset):
+    """Clips of the ``student.extra_train`` sets, prepared like the VOA slices."""
+
+    def __init__(self, split: SpeechSplit, processor: WhisperProcessor, lang_token_id: int):
+        self.split = split
+        self.feature_extractor = processor.feature_extractor
+        self.tokenizer = processor.tokenizer
+        self.sampling_rate = processor.feature_extractor.sampling_rate
+        transcribe_id = self.tokenizer.convert_tokens_to_ids("<|transcribe|>")
+        notimestamps_id = self.tokenizer.convert_tokens_to_ids("<|notimestamps|>")
+        self.prefix_ids = [lang_token_id, transcribe_id, notimestamps_id]
+        self.eos_token_id = self.tokenizer.eos_token_id
+
+    def __len__(self) -> int:
+        return len(self.split)
+
+    def __getitem__(self, index: int) -> dict:
+        sentence, waveform, sample_rate = self.split.read(index)
+        if sample_rate != self.sampling_rate:
+            waveform = torchaudio.functional.resample(waveform, sample_rate, self.sampling_rate)
+        max_samples = int(MAX_AUDIO_SECONDS * self.sampling_rate)
+        if waveform.numel() > max_samples:
+            waveform = waveform[:max_samples]
+        extracted = self.feature_extractor(
+            waveform.numpy(),
+            sampling_rate=self.sampling_rate,
+            return_tensors="pt",
+            return_attention_mask=True,
+        )
+        text_ids = self.tokenizer(sentence, add_special_tokens=False).input_ids
         text_ids = text_ids[: MAX_LABEL_TOKENS - len(self.prefix_ids) - 1]
         labels = self.prefix_ids + text_ids + [self.eos_token_id]
         return {
@@ -598,7 +662,21 @@ def main() -> None:
     model.config.use_cache = False
 
     train_dataset = VoaSliceDataset(examples, locations, processor, lang_token_id, cfg.sample_rate)
-    train_sampler = RowGroupSampler(group_examples(examples, locations), cfg.train_batch_size, cfg.seed)
+    extra_clips = 0
+    if cfg.extra_train:
+        # Paths of the labelled sets come from the same config file.
+        labelled = LabelledDataset(load_train_split(cfg.extra_train), processor, lang_token_id)
+        extra_clips = len(labelled)
+        for part in labelled.split.parts:
+            log.info("extra train %s: %d clips", part.source, len(part))
+        train_dataset = ConcatDataset([train_dataset, labelled])
+    train_sampler = RowGroupSampler(
+        group_examples(examples, locations),
+        cfg.train_batch_size,
+        cfg.seed,
+        extra=extra_clips,
+        extra_offset=len(examples),
+    )
     train_loader = DataLoader(
         train_dataset,
         batch_size=cfg.train_batch_size,
@@ -665,9 +743,13 @@ def main() -> None:
         "trainable": "decoder",
         "filter_marks": cfg.filter_marks,
         "accepted_mark": list(cfg.accepted_mark),
-        "train_data": ["voa_pseudo_labels"],
-        # The student sees Common Voice only through its init model.
-        "cv_train_rows": read_meta(Path(cfg.init).parent).get("cv_train_rows"),
+        "train_data": ["voa_pseudo_labels", *cfg.extra_train],
+        # Without common_voice in extra_train the student sees Common Voice only through its init model.
+        "cv_train_rows": (
+            cv_train_rows(load_settings().common_voice_splits)
+            if "common_voice" in cfg.extra_train
+            else read_meta(Path(cfg.init).parent).get("cv_train_rows")
+        ),
         "labels": str(cfg.labels),
         "stage": "student",
         **chain_fields(),

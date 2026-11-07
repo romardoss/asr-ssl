@@ -16,6 +16,7 @@ if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))
 
 from project_config import CONFIG_PATH, find_labelling_file, labelling_runs  # noqa: E402,F401
+from dataset_roles import check_names  # noqa: E402
 
 
 @dataclass(frozen=True)
@@ -145,6 +146,21 @@ def _names(section: dict, key: str, label: str) -> tuple[str, ...]:
     return tuple(names)
 
 
+def _role_names(section: dict, role: str, label: str) -> tuple[str, ...]:
+    names = _names(section, role, label)
+    check_names(names, role, label)
+    return names
+
+
+def _extra_train(section: dict, label: str) -> tuple[str, ...]:
+    """Optional labelled train sets mixed into the student's pseudo-labels."""
+    if not section.get("extra_train"):
+        return ()
+    names = _names(section, "extra_train", label)
+    check_names(names, "train", label)
+    return names
+
+
 def _limit(section: dict, key: str, label: str) -> int | float:
     value = _require(section, key, label)
     if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
@@ -202,9 +218,9 @@ def load_settings(path: Path | None = None) -> Settings:
         checkpoint_every=_fraction(training, "checkpoint_every", "training.checkpoint_every"),
         max_audio_seconds=_positive_float(data, "max_audio_seconds", "data.max_audio_seconds"),
         max_label_tokens=_positive_int(data, "max_label_tokens", "data.max_label_tokens"),
-        train_data=_names(data, "train", "data.train"),
-        dev_data=_names(data, "dev", "data.dev"),
-        test_data=_names(data, "test", "data.test"),
+        train_data=_role_names(data, "train", "data.train"),
+        dev_data=_role_names(data, "dev", "data.dev"),
+        test_data=_role_names(data, "test", "data.test"),
         init=_optional_text(training, "init", "training.init"),
     )
 
@@ -244,6 +260,7 @@ class StudentSettings:
     val_every: float
     max_audio_seconds: float
     max_label_tokens: int
+    extra_train: tuple[str, ...]
 
 
 def latest_labelling_file(output_dir: Path, teacher: Path, filename: str) -> Path:
@@ -362,4 +379,5 @@ def load_student_settings(path: Path | None = None) -> StudentSettings:
         val_every=_fraction(student, "val_every", "student.val_every"),
         max_audio_seconds=_positive_float(student, "max_audio_seconds", "student.max_audio_seconds"),
         max_label_tokens=_positive_int(student, "max_label_tokens", "student.max_label_tokens"),
+        extra_train=_extra_train(student, "student.extra_train"),
     )

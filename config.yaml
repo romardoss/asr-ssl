@@ -88,6 +88,9 @@ student:
   # false trains on every non-empty label and does not read marks
   filter_marks: true
   accepted_mark: [3]
+  # Labelled train sets (data.train names) trained in the same run after the pseudo-labels:
+  # each epoch ends on them. accepted_mark does not apply to them. Empty: pseudo-labels only.
+  extra_train: []
   voa: /mnt/data/rberehun/voa-ukr
   sample_rate: 16000
   language: uk
@@ -122,26 +125,36 @@ student:
 # data: pseudo trains on VOA pseudo-labels with the student settings; accepted_mark keeps
 #   only those judge marks (leave it out to use every label).
 # data: [dataset, ...] trains on labelled sets from data.train names with the training settings.
+# data: [pseudo, dataset, ...] trains on both in one student run (student.extra_train): each epoch goes
+#   through the pseudo-labels first, then the datasets. accepted_mark filters only the pseudo part.
 # A step may set max_epochs, learning_rate, and warmup_steps; anything else comes from its section.
 # Checkpoints: <paths.checkpoints>/<name>-s<N>-<data>_01. A finished step is skipped on a rerun,
 # so a new experiment needs a new name. name must start with student_.
 multi_step:
-  name: student_chain-m345-cv
+  name: student_mix-m2345+cv-m45+cv
   init: /mnt/data/rberehun/checkpoints/model-whisper-uk/model-whisper-uk-epoch00.ckpt
   # What evaluate.py scores into results.csv: steps (final checkpoint of each step),
   # all (also the first epoch of each step), last (end of the chain), none.
   evaluate: steps
   steps:
-    - data: pseudo
-      accepted_mark: [3, 4, 5]
-      max_epochs: 2
-    - data: [common_voice]
-      max_epoch: 1
-    - data: pseudo
-      accepted_mark: [3, 4, 5]
-      max_epochs: 2
-    - data: [common_voice]
-      max_epoch: 1
+    - data: [pseudo, common_voice]
+      accepted_mark: [2, 3, 4, 5]
+      max_epochs: 1
+    - data: [pseudo, common_voice]
+      accepted_mark: [4, 5]
+      max_epochs: 1
+  # Another chain (name student_chain-m345-cv): alternate steps.
+  # steps:
+  #   - data: pseudo
+  #     accepted_mark: [3, 4, 5]
+  #     max_epochs: 2
+  #   - data: [common_voice]
+  #     max_epoch: 1
+  #   - data: pseudo
+  #     accepted_mark: [3, 4, 5]
+  #     max_epochs: 2
+  #   - data: [common_voice]
+  #     max_epoch: 1
 
 # VOA preparation files: pipeline.language and pipeline.timestamps, plus the analysis scripts.
 # The final outputs of those stages are pseudo_labelling.ukrainian_meta and pseudo_labelling.timestamps.

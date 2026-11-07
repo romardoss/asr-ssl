@@ -7,6 +7,10 @@ The chain is the ``multi_step`` section of the config. Each step is either
   keeps only labels with those judge marks; without it every label is used.
 - ``data: [common_voice, ...]``: labelled datasets, trained by
   ``fine-tune.py`` with the ``training`` settings and ``data.dev``.
+- ``data: [pseudo, common_voice, ...]``: both in one run of
+  ``fine-tune-student.py`` (``student.extra_train``): one model, one optimizer.
+  Each epoch first goes through the pseudo-labels, then through the labelled
+  sets. ``accepted_mark`` filters only the pseudo-labels.
 
 Step 1 starts from ``multi_step.init``, every later step from the final
 checkpoint of the step before it. A step may override ``max_epochs``,
@@ -49,6 +53,7 @@ if str(FINE_TUNE) not in sys.path:
 
 from checkpoints import is_final_epoch_checkpoint, latest_checkpoint, student_checkpoint_dirs  # noqa: E402
 from run_meta import CHAIN_ENV, NOTE_ENV, STEP_ENV  # noqa: E402
+from dataset_roles import check_names  # noqa: E402
 from settings import load_settings, load_student_settings  # noqa: E402
 
 from project_config import CONFIG_PATH, load_config  # noqa: E402
@@ -74,14 +79,15 @@ class Step:
     def label(self) -> str:
         if not self.pseudo:
             return "-".join(self.datasets)
-        return "pseudo-m" + "".join(str(mark) for mark in self.marks) if self.marks else "pseudo-all"
+        pseudo = "pseudo-m" + "".join(str(mark) for mark in self.marks) if self.marks else "pseudo-all"
+        return "-".join([pseudo, *self.datasets])
 
     @property
     def description(self) -> str:
         if not self.pseudo:
             return ", ".join(self.datasets)
         marks = ", ".join(str(mark) for mark in self.marks) if self.marks else "all"
-        return f"pseudo-labels, marks {marks}"
+        return " + ".join([f"pseudo-labels (marks {marks})", *self.datasets])
 
 
 @dataclass(frozen=True)
@@ -133,15 +139,19 @@ def _step(number: int, raw) -> Step:
             if key != "warmup_steps" and value <= 0:
                 _fail(f"{label}.{key} must be positive")
             overrides[key] = kind(value)
-    data = raw["data"]
-    if data == PSEUDO:
-        marks = _marks(raw["accepted_mark"], f"{label}.accepted_mark") if "accepted_mark" in raw else None
-        return Step(number, True, marks=marks, overrides=overrides)
-    if "accepted_mark" in raw:
-        _fail(f"{label}.accepted_mark only applies to data: {PSEUDO}")
+    data = [raw["data"]] if isinstance(raw["data"], str) else raw["data"]
     if not isinstance(data, list) or not data or not all(isinstance(item, str) and item for item in data):
-        _fail(f"{label}.data must be '{PSEUDO}' or a non-empty list of dataset names")
-    return Step(number, False, datasets=tuple(data), overrides=overrides)
+        _fail(f"{label}.data must be '{PSEUDO}' or a non-empty list of '{PSEUDO}' and dataset names")
+    if len(set(data)) != len(data):
+        _fail(f"{label}.data lists something twice")
+    datasets = tuple(item for item in data if item != PSEUDO)
+    check_names(datasets, "train", f"multi_step {label}.data")
+    if PSEUDO in data:
+        marks = _marks(raw["accepted_mark"], f"{label}.accepted_mark") if "accepted_mark" in raw else None
+        return Step(number, True, datasets=datasets, marks=marks, overrides=overrides)
+    if "accepted_mark" in raw:
+        _fail(f"{label}.accepted_mark applies only when data includes {PSEUDO}")
+    return Step(number, False, datasets=datasets, overrides=overrides)
 
 
 def load_chain(config: dict) -> Chain:
@@ -170,7 +180,9 @@ def step_config(config: dict, chain: Chain, step: Step, init: str) -> dict:
     name = chain.step_name(step)
     if step.pseudo:
         student = derived["student"]
-        student.update({"name": name, "init": init, "filter_marks": step.marks is not None})
+        student.update(
+            {"name": name, "init": init, "filter_marks": step.marks is not None, "extra_train": list(step.datasets)}
+        )
         if step.marks is not None:
             student["accepted_mark"] = list(step.marks)
         student.update(step.overrides)

@@ -24,16 +24,7 @@ from common_voice import load_split
 from settings import Settings, load_settings
 
 # Config name -> which roles it can fill, and the directory name of that role.
-# FLEURS and Ukrainian Dialects call the dev split "validation". The Common
-# Voice 10 test set is stored under the parquet name "train".
-ROLES: dict[str, dict[str, str]] = {
-    "common_voice": {"train": "train", "dev": "dev", "test": "test"},
-    "fleurs": {"train": "train", "dev": "validation", "test": "test"},
-    "opentts": {"train": "train"},
-    "tg_voices": {"train": "train"},
-    "ukr_dialects": {"train": "train", "dev": "validation", "test": "test"},
-    "cv10_test": {"test": "train"},
-}
+from dataset_roles import ROLES  # noqa: E402
 
 
 def decode_audio(source: str | bytes) -> tuple[torch.Tensor, int]:
@@ -380,6 +371,12 @@ def _part(settings: Settings, name: str, role: str):
     if name == "opentts":
         return _opentts(settings)
     return _parquet(settings, name, folder_name)
+
+
+def load_train_split(names: tuple[str, ...], settings: Settings | None = None) -> SpeechSplit:
+    """The train splits of ``names`` as one split, as ``data.train`` would load them."""
+    cfg = settings or load_settings()
+    return SpeechSplit([_part(cfg, name, "train") for name in names], tuple(names))
 
 
 def load_configured_splits(settings: Settings | None = None) -> dict[str, SpeechSplit]:
