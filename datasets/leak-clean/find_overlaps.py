@@ -48,9 +48,8 @@ def parse_args() -> argparse.Namespace:
     return args
 
 
-def main() -> None:
-    args = parse_args()
-    folder = output_dir(args.output)
+def find(folder: Path, min_words: int = 1) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Write ``duplicates.csv`` and ``units.csv`` from ``metadata.parquet`` and return them."""
     metadata_path = folder / METADATA_NAME
     if not metadata_path.is_file():
         raise SystemExit(f"{metadata_path} not found. Run collect_metadata.py first.")
@@ -63,7 +62,7 @@ def main() -> None:
     units = units.iloc[sorted(range(len(units)), key=lambda index: unit_key(units["unit"].iloc[index]))]
     units.to_csv(folder / UNITS_NAME, index=False)
 
-    compared = metadata[metadata["words"] >= args.min_words]
+    compared = metadata[metadata["words"] >= min_words]
     copies = compared.groupby("text_norm")["unit"].transform("size")
     duplicates = compared[copies > 1].copy()
 
@@ -86,7 +85,7 @@ def main() -> None:
     columns = ["group", "kind", "text_norm", "words", "copies", "units", "dataset", "split", "id", "audio_name", "location", "text"]
     duplicates[columns].to_csv(folder / DUPLICATES_NAME, index=False)
 
-    print(f"compared {len(compared)} clips with at least {args.min_words} word(s)")
+    print(f"compared {len(compared)} clips with at least {min_words} word(s)")
     for kind in KINDS:
         chosen = groups[groups["kind"] == kind]
         print(f"{kind}: {len(chosen)} texts, {int(chosen['copies'].sum())} clips")
@@ -101,6 +100,12 @@ def main() -> None:
         print(f"{unit}: {leaked} of {total} clips have a text that is also in train ({100 * leaked / total:.1f}%)")
     print(f"wrote {folder / DUPLICATES_NAME} ({len(duplicates)} rows, {len(groups)} texts)")
     print(f"wrote {folder / UNITS_NAME}")
+    return duplicates[columns], units
+
+
+def main() -> None:
+    args = parse_args()
+    find(output_dir(args.output), args.min_words)
 
 
 if __name__ == "__main__":

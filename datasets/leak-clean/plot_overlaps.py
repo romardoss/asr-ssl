@@ -268,9 +268,8 @@ def plot_coverage(coverage: pd.DataFrame, path: Path) -> Path | None:
     return save(figure, path)
 
 
-def main() -> None:
-    args = parse_args()
-    folder = output_dir(args.output)
+def plot(folder: Path) -> list[Path]:
+    """Write the plots from the CSV files in ``folder`` and return their paths."""
     duplicates = read_csv(folder / DUPLICATES_NAME)
     units = read_csv(folder / UNITS_NAME)
     coverage = read_csv(folder / COVERAGE_NAME)
@@ -287,9 +286,15 @@ def main() -> None:
         where = f"{dataset}/{split}" if split else dataset
         print(f"coverage: {where} {problem}, so it was not checked")
     written.append(coverage_plot)
+    written = [path for path in written if path is not None]
     for path in written:
-        if path is not None:
-            print(f"wrote {path}")
+        print(f"wrote {path}")
+    return written
+
+
+def main() -> None:
+    args = parse_args()
+    plot(output_dir(args.output))
 
 
 if __name__ == "__main__":

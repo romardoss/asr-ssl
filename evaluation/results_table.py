@@ -134,7 +134,7 @@ def run_row(run: Path, evaluation_dir: Path) -> dict | None:
         "cv_train_rows": meta.get("cv_train_rows"),
         "learning_rate": None if pretrained else meta.get("learning_rate") or section.get("learning_rate"),
         "max_epochs": None if pretrained else meta.get("max_epochs") or section.get("max_epochs"),
-        "precision": None if pretrained else section.get("precision"),
+        "precision": None if pretrained else meta.get("precision") or section.get("precision"),
         "loss": payload.get("loss"),
     }
     test_sets = {LEGACY_NAMES.get(name, name): metrics for name, metrics in payload.get("test_sets", {}).items()}

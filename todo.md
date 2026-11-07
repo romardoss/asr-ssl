@@ -1,69 +1,76 @@
-# TODO: після очищення train Common Voice
+# TODO
 
-`train_validated.tsv` (`validated` мінус `test`) очищено скриптом `datasets/leak-clean/clean_common_voice_train.py`. З train прибрано лише кліпи dev і test: лишилося 62 460 рядків з 73 415 і 376 дикторів. Спільні з dev і test речення й диктори свідомо лишено, щоб навчатися на всіх валідованих даних. Що це не завищує WER, перевірено окремим скриптом `datasets/leak-clean/score_common_voice_cleaned.py` на `test_cleaned.tsv` (5 703 кліпи без дикторів і нормалізованих речень з train): різниця з повним test у межах ±0.3 п.п. Опис — у `datasets/common-voice/README.md`. Нижче те, що ще потрібно зробити.
+Контекст: `train_validated.tsv` тепер містить усі валідовані записи Common Voice, крім кліпів dev і test (62 460 рядків). Спільні з dev і test речення й диктори лишено свідомо. Див. `datasets/common-voice/README.md`.
 
-1. [x] **129 рядків, що збігаються лише після нормалізації.** Пункт втратив сенс, бо речення з train більше не прибираються. Нормалізоване порівняння тепер використовується для відбору `test_cleaned.tsv`.
+1. [ ] **Перенавчити й переоцінити моделі.** Усі наявні моделі вчилися на train, що містив кліпи dev.
+   1. `python main.py fine-tune --note "..."` на новому train. Кроків за епоху стане менше, тож зміниться й розклад LR.
+   2. Якщо вчитель змінився, перезібрати псевдомітки й перенавчити student.
+   3. Переоцінити `evaluation/baseline/`, перебудувати `model_comparison.png` (`evaluation/batch-compare.py`) і повторно прогнати `datasets/leak-clean/score_common_voice_cleaned.py`.
 
-2. [ ] **Перенавчити моделі й оцінити їх заново.**
-   - Суть: усі чекпоінти й результати в `evaluation/` отримано на train із витоком.
-   - Що зробити:
-     1. перенавчити fine-tune (`python main.py fine-tune`) на очищеному train;
-     2. перезібрати псевдомітки вчителем, якщо вчитель зміниться, і перенавчити student;
-     3. заново оцінити всі моделі, включно з `evaluation/baseline/`, і перебудувати `model_comparison.png` (`evaluation/batch-compare.py`).
-   - Врахувати: Common Voice train зменшився з 73 415 до 62 460 рядків, тож кількість кроків за епоху й розклад LR трохи зміняться.
-   - Після переоцінки прогнати `datasets/leak-clean/score_common_voice_cleaned.py`, щоб переконатися, що висновок про спільні диктори й речення не змінився.
+2. [ ] **Перевірка перетину сплітів у завантажувачі.** `load_configured_splits` або `load_split` має зупиняти запуск, якщо train перетинається з dev чи test за кліпом (`path`/ID). Спільні речення й диктори помилкою не вважати.
 
-3. [ ] **Додати перевірку на перетин сплітів у коді завантаження.**
-   - Суть: зараз `fine-tune/common_voice.py` і `fine-tune/speech_data.py` приймають будь-які спліти без перевірки, тому витік і не було помічено.
-   - Що зробити: у `load_configured_splits` (або в `load_split`) зупиняти запуск з помилкою, якщо train перетинається з dev або test за кліпом (`path` або ID).
-   - Спільні речення й диктори train з dev і test помилкою не вважати: їх лишено свідомо.
+3. [ ] **`cv10_test` проти train Common Voice.** Кліпи CV10 test, імовірно, є у `validated` CV27, а отже в train. Звірити за хешем аудіо, іменем файлу й текстом. Код є лише в розділах 4–5 `datasets/leak-clean/README.md`, його треба зберегти у файл. Якщо перетин є, прибрати ці кліпи з train або вилучити `cv10_test` з `data.test`.
 
-4. [ ] **Перевірити `cv10_test` проти train Common Voice.**
-   - Суть: тестові кліпи Common Voice 10, імовірно, увійшли до `validated` пізніших релізів, а отже й до train Common Voice 27. Тоді `cv10_test` перевіряє модель на даних, на яких вона навчалася.
-   - Що зробити: на сервері зібрати маніфест і проаналізувати його за `README.md` у цій теці (розділи 4–5), щоб звірити `cv10_test` із train за хешем аудіо, назвою файлу й текстом. Якщо перетин є, прибрати ці кліпи з train або вилучити `cv10_test` з `data.test`.
+4. [ ] **Перейменувати запуски student з ablation за оцінками судді.** Усі мають назву `student_whisper-commonvoice-based`, тож теки оцінок і легенда `batch-compare.py` їх не розрізняють. У `results.csv` вони вже розрізняються за колонкою `accepted_marks`.
 
-5. [ ] **Перейменувати два останні запуски student (ablation за оцінками LLM-судді).**
-   - Суть: обидва запуски мають однакову назву `student_whisper-commonvoice-based`, тож за шляхом не видно, з якими оцінками навчалася модель. У `batch-compare.py` легенда береться з назви теки, тому на графіку їх теж не розрізнити.
-   - Які запуски:
-     1. **усі оцінки** (`accepted_mark: [0,1,2,3,4,5]`, весь датасет): чекпоінти в `_01`, оцінка в `evaluation/student_whisper-commonvoice-based-epoch01-01/` (видно з її `config.yaml` і `meta.yaml`);
-     2. **лише оцінка 3** (`accepted_mark: [3]`, теперішній `config.yaml`): чекпоінти, імовірно, в `_02`. Оцінки цього запуску в репозиторії немає. На сервері вона, якщо вже є, лежить у `evaluation/student_whisper-commonvoice-based-epoch01-02/`. Перед перейменуванням звірити: `grep accepted_mark /mnt/data/rberehun/checkpoints/student_whisper-commonvoice-based_0*/config.yaml`.
-   - Що перейменувати (схема `<student.name>-<фільтр оцінок>`, як у вже наявного `-mark5`):
+   | Запуск | Чекпоінти зараз → нова назва | Оцінка зараз → нова назва |
+   |---|---|---|
+   | усі оцінки `[0..5]` | `checkpoints/student_whisper-commonvoice-based_01` → `…-allmarks_01` | `evaluation/student_whisper-commonvoice-based-epoch01-01` → `…-allmarks-epoch01-01` |
+   | лише 3 (`_02`, звірити: `grep accepted_mark …_0*/config.yaml`) | `…_02` → `…-mark3_01` | на сервері `…-epoch01-02` → `…-mark3-epoch01-01` |
+   | лише 5 | `…based` (без номера) → `…-mark5_01` | вже `…-mark5-epoch01-01` |
 
-     | Що | Зараз | Нова назва |
-     |---|---|---|
-     | чекпоінти, усі оцінки | `/mnt/data/rberehun/checkpoints/student_whisper-commonvoice-based_01/` | `/mnt/data/rberehun/checkpoints/student_whisper-commonvoice-based-allmarks_01/` |
-     | чекпоінти, оцінка 3 | `/mnt/data/rberehun/checkpoints/student_whisper-commonvoice-based_02/` | `/mnt/data/rberehun/checkpoints/student_whisper-commonvoice-based-mark3_01/` |
-     | оцінка, усі оцінки | `evaluation/student_whisper-commonvoice-based-epoch01-01/` | `evaluation/student_whisper-commonvoice-based-allmarks-epoch01-01/` |
-     | оцінка, оцінка 3 (на сервері) | `evaluation/student_whisper-commonvoice-based-epoch01-02/` | `evaluation/student_whisper-commonvoice-based-mark3-epoch01-01/` |
-     | метрики навчання (на сервері) | `output/fine-tune/student_whisper-commonvoice-based/version_N/` обох запусків | `output/fine-tune/student_whisper-commonvoice-based-allmarks/` і `...-mark3/` |
-     | для послідовності: старий запуск з оцінкою 5 | `/mnt/data/rberehun/checkpoints/student_whisper-commonvoice-based/` (без номера) | `/mnt/data/rberehun/checkpoints/student_whisper-commonvoice-based-mark5_01/` |
+   Команди для сервера, з кореня репозиторію, після `git pull`:
 
-   - Як перейменувати, щоб нічого не зламати:
-     1. Теку чекпоінтів називати саме `<назва>_NN`. Код (`_numbered_dirs` у `fine-tune/checkpoints.py`) знаходить запуски лише за шаблоном `<student.name>_(\d+)`. Інакше `resume` і `latest_student_checkpoint` теку не побачать.
-     2. Файли `.ckpt` усередині теж перейменувати (`student_whisper-commonvoice-based-epoch01.ckpt` → `student_whisper-commonvoice-based-mark3-epoch01.ckpt`), бо `evaluate.py` будує назву теки оцінки з назви файлу чекпоінта (`model_slug`). Саме тому обидві оцінки й отримали однакову назву. Після цього заново створити симлінк `last.ckpt`, бо він вказує на стару назву файлу.
-     3. Оновити `checkpoint_dir` у `meta.yaml` теки оцінки й теки чекпоінтів.
-     4. Метрики в `output/fine-tune/.../version_N/` розкласти за запусками. Звіряти за `config.yaml` у кожній `version_N`. `results.json` у цій теці перезаписується кожним запуском (`REVIEW_FINDINGS.md`, пункт 32), тож зараз там лише результат останнього.
-     5. Перебудувати `model_comparison.png` (`evaluation/batch-compare.py`).
-   - Щоб не повторилося: перед кожним прогоном ablation змінювати `student.name` у `config.yaml` (наприклад, `student_whisper-commonvoice-based-mark3`). Або додати в `fine-tune/fine-tune-student.py` автоматичний суфікс з `accepted_mark` (`-allmarks`, `-mark3`, `-mark4-5`), коли `filter_marks: true`.
+   1. Звірити, який запуск з якими оцінками, і що є в `evaluation/`. Якщо `_01` чи `_02` не збігаються з таблицею, поміняти аргументи в кроці 2.
+      ```bash
+      grep -H accepted_mark /mnt/data/rberehun/checkpoints/student_whisper-commonvoice-based{,_0*}/config.yaml
+      ls -d evaluation/student_whisper-commonvoice-based*
+      ```
+   2. Зберегти як `/tmp/rename_students.sh` і запустити `bash /tmp/rename_students.sh`. Скрипт перейменовує теку чекпоінтів у `<назва>_01` (інакше `_numbered_dirs` її не знайде), файли `.ckpt` і `last.ckpt`, теку оцінки, а також шляхи й назви в `meta.yaml`, `config.yaml` і `results.json`. Перевірено на макеті тек.
+      ```bash
+      set -euo pipefail
+      CK=/mnt/data/rberehun/checkpoints
+      OLD=student_whisper-commonvoice-based
 
-6. [ ] **Пройти відкриті пункти аудиту `REVIEW_FINDINGS.md`.**
-   - Суть: аудит кодової бази вже зроблено 2026-11-03, повторювати його не треба. Частину знахідок з того часу виправлено (наприклад, `HF_TOKEN` у `.env.example`, `av` у `requirements.txt`), але не всі.
-   - Досі відкриті критичні пункти (перевірено 2026-11-06):
-     1. пункт 3: `fine-tune/checkpoints.py:176` усе ще `range(5, 101, ...)`, тож чекпоінти student зберігаються на 5, 30, 55 і 80 % епохи;
-     2. пункт 4: `config.yaml` усе ще має `precision: bf16-true` для `training` і `student`. Це стосується й обох запусків ablation: висновки з порівняння оцінок можуть бути спотворені, якщо decoder майже не вчиться.
-   - Решту пунктів (5–32) звірити з поточним кодом і позначити в `REVIEW_FINDINGS.md`, що виправлено.
+      # $1 стара тека чекпоінтів, $2 нова назва моделі, $3 стара тека оцінки в evaluation/
+      rename_run() {
+        local src=$CK/$1 new=$2 dst=$CK/$2_01 eval_old=evaluation/$3 eval_new=evaluation/$2-epoch01-01
+        [ -d "$src" ] || { echo "немає $src"; return; }
+        local link; link=$(readlink "$src/last.ckpt" || true)
+        mv "$src" "$dst"
+        for f in "$dst"/$OLD-*.ckpt; do mv "$f" "$dst/$new${f##*/$OLD}"; done
+        [ -n "$link" ] && ln -sfn "$new${link#$OLD}" "$dst/last.ckpt"
+        [ -d "$eval_old" ] && [ "$eval_old" != "$eval_new" ] && mv "$eval_old" "$eval_new"
+        for file in "$dst/meta.yaml" "$dst/config.yaml" "$eval_new/meta.yaml" "$eval_new/config.yaml" "$eval_new/results.json"; do
+          [ -f "$file" ] && sed -i -e "s#$src\([/\"]\|\$\)#$dst\1#g" -e "s#$OLD-epoch#$new-epoch#g" \
+            -e "s#^model: $OLD\$#model: $new#" -e "s#^  name: $OLD\$#  name: $new#" "$file"
+        done
+        echo "$src -> $dst"
+      }
 
-7. [ ] **Запустити перевірку датасетів на витік на сервері.**
-   - Стан: скрипти `datasets/leak-clean/` готові до запуску й закомічені разом із `project_config.py`, від якого вони залежать. 2026-11-06 їх прогнано:
-     1. локально на TSV Common Voice: результат збігся з описаним у `datasets/leak-clean/README.md` (19 кліпів dev і 32 кліпи test мають текст із train);
-     2. на синтетичних даних для всіх інших датасетів (FLEURS, OpenTTS, TG Voices, Ukrainian Dialects, CV10 test, VOA): усі гілки коду відпрацювали, проблеми покриття знайдено правильно, графіки побудовано.
-   - Що зробити: на сервері, з кореня репозиторію, після `git pull`:
-     ```bash
-     env/bin/python datasets/leak-clean/collect_metadata.py
-     env/bin/python datasets/leak-clean/find_overlaps.py --min-words 4
-     env/bin/python datasets/leak-clean/plot_overlaps.py
-     ```
-     На Vast додати `ASR_CONFIG=config.vast.yaml`. Для VOA потрібен `labels.csv` вчителя в `output/pseudo-labelling/`, інакше VOA лише позначиться в `coverage.csv` як не знайдений.
-   - Обмеження: скрипти порівнюють лише нормалізований текст. Вони не перевіряють:
-     1. хеш аудіо, назву файлу й диктора. Тому для пункту 4 (`cv10_test` проти train Common Voice) усе одно потрібен код з розділів 4–5 `datasets/leak-clean/README.md`. Він лежить лише в README, тож його треба зберегти у файл. Шлях `datasets/common-voice/raw` і `LABELS` у ньому прописані вручну;
-     2. чи містять псевдомітки VOA речення з dev і test Common Voice як підрядок (README, розділ 3, крок 6). Повний збіг тексту слайсу VOA з реченням майже неможливий, тож ця перевірка зараз нічого не покаже.
+      rename_run ${OLD}_01 ${OLD}-allmarks ${OLD}-epoch01-01
+      rename_run ${OLD}_02 ${OLD}-mark3    ${OLD}-epoch01-02
+      rename_run ${OLD}    ${OLD}-mark5    ${OLD}-mark5-epoch01-01
+      ```
+   3. Розкласти метрики навчання за запусками. Для кожної `version_N` вивести `accepted_mark`, а потім перенести відповідно:
+      ```bash
+      for v in output/fine-tune/student_whisper-commonvoice-based/version_*; do echo "$v: $(grep -h accepted_mark $v/config.yaml)"; done
+      # приклад для version_3 з [3]:
+      mkdir -p output/fine-tune/student_whisper-commonvoice-based-mark3
+      mv output/fine-tune/student_whisper-commonvoice-based/version_3 output/fine-tune/student_whisper-commonvoice-based-mark3/
+      ```
+   4. Перебудувати таблицю й графік і закомітити перейменовані теки оцінок:
+      ```bash
+      env/bin/python evaluation/results_table.py
+      env/bin/python evaluation/batch-compare.py evaluation
+      git add -A evaluation && git commit -m "rename student ablation runs"
+      ```
+
+   Щоб не повторилося: перед кожним ablation змінювати `student.name` або додати в `fine-tune-student.py` автоматичний суфікс з `accepted_mark`.
+
+5. [ ] **Відкриті пункти аудиту `REVIEW_FINDINGS.md` (2026-11-03).**
+   1. Пункт 3: `fine-tune/checkpoints.py` досі має `range(5, 101, ...)`, тому чекпоінти student зберігаються на 5, 30, 55 і 80 % епохи.
+   2. Пункт 4: `precision: bf16-true` у `training` і `student`. Якщо декодер майже не вчиться, висновки ablation можуть бути спотворені.
+   3. Пункти 5–32 звірити з кодом і позначити виправлені.
+
+6. [ ] **Перевірка датасетів на витоки на сервері.** Виконати `env/bin/python datasets/leak-clean/check_leaks.py`, на Vast — з `ASR_CONFIG=config.vast.yaml`, і прочитати `output/leak-clean/report.md`. Для VOA потрібен `labels.csv` вчителя. Скрипт порівнює лише текст. Тому для хешу, імені файлу й диктора потрібен пункт 3, а пошук речень CV dev/test усередині псевдоміток VOA (README, розділ 3, крок 6) ще не реалізовано.

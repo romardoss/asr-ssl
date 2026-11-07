@@ -6,3 +6,13 @@ base_model: openai/whisper-medium
 language: uk
 cv_train_rows: 73415
 evaluated_at: '2026-10-27 09:11:15'
+learning_rate: 1.0e-05
+max_epochs: 2
+precision: bf16-true
+seed: 42
+train_data:
+- common_voice
+- fleurs
+- opentts
+- tg_voices
+- ukr_dialects

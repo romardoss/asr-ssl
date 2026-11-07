@@ -339,10 +339,9 @@ def voa(collector: Collector, config: dict) -> None:
     collector.problem("voa", "train", AUDIO_WITHOUT_TEXT, empty)
 
 
-def main() -> None:
-    args = parse_args()
+def collect(datasets: list[str], destination: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Write ``metadata.parquet`` and ``coverage.csv`` and return them."""
     config = load_config()
-    destination = output_dir(args.output)
     destination.mkdir(parents=True, exist_ok=True)
     print(f"config {CONFIG_PATH}", flush=True)
 
@@ -353,7 +352,7 @@ def main() -> None:
         "opentts": opentts,
         "voa": voa,
     }
-    for dataset in args.datasets:
+    for dataset in datasets:
         before = len(collector.rows)
         if dataset in PARQUET_DATASETS:
             parquet_dataset(collector, config, dataset)
@@ -379,6 +378,12 @@ def main() -> None:
             print(f"  {where}: {row.problem} {row.count} (e.g. {row.example})", flush=True)
     print(f"wrote {destination / METADATA_NAME} ({len(metadata)} clips)", flush=True)
     print(f"wrote {destination / COVERAGE_NAME}", flush=True)
+    return metadata, coverage
+
+
+def main() -> None:
+    args = parse_args()
+    collect(args.datasets, output_dir(args.output))
 
 
 if __name__ == "__main__":

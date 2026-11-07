@@ -101,6 +101,7 @@ TRAINING_FIELDS = (
     "labels",
     "learning_rate",
     "max_epochs",
+    "precision",
     "seed",
 )
 

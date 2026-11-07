@@ -677,6 +677,7 @@ def main() -> None:
         "learning_rate": cfg.learning_rate,
         "seed": cfg.seed,
         "max_epochs": cfg.max_epochs,
+        "precision": cfg.precision,
         "frozen": "encoder",
         "trainable": "decoder",
         "filter_marks": cfg.filter_marks,
