@@ -1,0 +1,6 @@
+model: student_whisper-commonvoice-based
+checkpoint: student_whisper-commonvoice-based-epoch01.ckpt
+epoch: 1
+checkpoint_dir: /mnt/data/rberehun/checkpoints/student_whisper-commonvoice-based_02
+base_model: openai/whisper-medium
+language: uk
