@@ -1,6 +1,9 @@
 """Collect one metadata row per clip and check that every audio has metadata.
 
-Only metadata and audio presence are read. Audio is never decoded.
+Audio is never decoded. Its encoded bytes are read once to get their
+SHA-256 (``audio_sha256``), which ``find_audio_matches.py`` uses to find the
+same recording in two places. ``--no-audio-hash`` skips that and reads only
+metadata and audio presence.
 
 - common_voice: split TSVs in ``paths.common_voice_splits``, audio files in
   ``paths.common_voice/clips``.
@@ -12,6 +15,9 @@ Only metadata and audio presence are read. Audio is never decoded.
   under ``pseudo_labelling.voa``, and ``pseudo_labelling.timestamps``
   against the pseudo-labels.
 
+VOA slices are cut from long files, so they have no own audio bytes and no
+hash. Common Voice ``unlabelled`` is not hashed: it is never compared.
+
 Writes ``metadata.parquet`` (one row per clip that has audio and text) and
 ``coverage.csv`` (every audio/metadata check, including the ones that found
 nothing) to ``output/leak-clean``. A dataset that is not on disk is reported
@@ -19,6 +25,7 @@ in ``coverage.csv`` and skipped.
 
     python datasets/leak-clean/collect_metadata.py
     python datasets/leak-clean/collect_metadata.py --datasets common_voice voa
+    python datasets/leak-clean/collect_metadata.py --no-audio-hash
 """
 
 from __future__ import annotations
@@ -42,6 +49,7 @@ from leak_common import (
     COVERAGE_NAME,
     DATASET_ORDER,
     METADATA_NAME,
+    audio_hash,
     config_file,
     config_text,
     configured_labelling_file,
@@ -65,6 +73,10 @@ PARQUET_DATASETS = {
     "cv10_test": ("transcription", (("train", "test"),)),
 }
 
+# Common Voice splits whose audio is hashed. ``unlabelled`` is never compared.
+HASHED_COMMON_VOICE_SPLITS = {"train", "dev", "test"}
+METADATA_COLUMNS = ["dataset", "split", "id", "audio_name", "audio_sha256", "location", "text", "text_norm", "words"]
+
 # coverage.csv problem codes
 NOT_FOUND = "dataset_not_found"
 AUDIO_NOT_CHECKED = "audio_not_checked"
@@ -84,15 +96,30 @@ def parse_args() -> argparse.Namespace:
         help="Datasets to collect. Default: all.",
     )
     parser.add_argument("--output", type=Path, default=None, help="Output folder. Default: output/leak-clean.")
+    parser.add_argument(
+        "--no-audio-hash",
+        action="store_true",
+        help="Do not read audio bytes for SHA-256. Faster, but find_audio_matches.py then matches only file names.",
+    )
     return parser.parse_args()
 
 
 class Collector:
-    def __init__(self) -> None:
+    def __init__(self, hash_audio: bool = True) -> None:
+        self.hash_audio = hash_audio
         self.rows: list[dict] = []
         self.coverage: list[dict] = []
 
-    def clip(self, dataset: str, split: str, clip_id: str, audio_name: str | None, location: str, text) -> bool:
+    def clip(
+        self,
+        dataset: str,
+        split: str,
+        clip_id: str,
+        audio_name: str | None,
+        location: str,
+        text,
+        audio_sha256: str = "",
+    ) -> bool:
         """Keep a clip that has text. Return False when its text is empty."""
         normalized = normalize_text(text)
         if not normalized:
@@ -103,6 +130,7 @@ class Collector:
                 "split": split,
                 "id": str(clip_id),
                 "audio_name": "" if not audio_name else Path(str(audio_name)).name,
+                "audio_sha256": audio_sha256,
                 "location": location,
                 "text": str(text).strip(),
                 "text_norm": normalized,
@@ -123,14 +151,17 @@ class Collector:
         )
 
 
-def audio_fields(column) -> tuple[list[int], list[str | None]]:
-    """Byte size (0 when empty or null) and stored file name of each ``audio`` struct."""
+def audio_fields(column, hash_audio: bool) -> tuple[list[int], list[str | None], list[str]]:
+    """Byte size (0 when empty or null), stored file name, and SHA-256 ("" when not
+    hashed) of each ``audio`` struct."""
     if isinstance(column, pa.ChunkedArray):
         column = column.combine_chunks()
     names = [field.name for field in column.type]
-    sizes = pc.fill_null(pc.binary_length(pc.struct_field(column, "bytes")), 0).to_pylist()
+    data = pc.struct_field(column, "bytes")
+    sizes = pc.fill_null(pc.binary_length(data), 0).to_pylist()
     paths = pc.struct_field(column, "path").to_pylist() if "path" in names else [None] * len(column)
-    return sizes, paths
+    hashes = [audio_hash(value) for value in data.to_pylist()] if hash_audio else [""] * len(column)
+    return sizes, paths, hashes
 
 
 def common_voice(collector: Collector, config: dict) -> None:
@@ -158,14 +189,19 @@ def common_voice(collector: Collector, config: dict) -> None:
             encoding="utf-8",
         )
         listed.update(frame["path"])
+        hashed = collector.hash_audio and on_disk is not None and split in HASHED_COMMON_VOICE_SPLITS
         missing: list[str] = []
         empty: list[str] = []
         for clip, sentence in zip(frame["path"], frame["sentence"]):
             if on_disk is not None and clip not in on_disk:
                 missing.append(clip)
                 continue
-            if not collector.clip("common_voice", split, clip, clip, str(clips / clip), sentence):
+            # Hashing waits until the text is known to be non-empty.
+            if not normalize_text(sentence):
                 empty.append(clip)
+                continue
+            digest = audio_hash((clips / clip).read_bytes()) if hashed else ""
+            collector.clip("common_voice", split, clip, clip, str(clips / clip), sentence, digest)
         if on_disk is not None:
             collector.problem("common_voice", split, METADATA_WITHOUT_AUDIO, missing)
         collector.problem("common_voice", split, AUDIO_WITHOUT_TEXT, empty)
@@ -194,14 +230,14 @@ def fleurs(collector: Collector, config: dict) -> None:
             for batch_index, batch in enumerate(ipc.open_stream(path)):
                 texts = batch.column("transcription").to_pylist()
                 identifiers = batch.column("id").to_pylist() if "id" in batch.schema.names else [None] * len(texts)
-                sizes, names = audio_fields(batch.column("audio"))
+                sizes, names, hashes = audio_fields(batch.column("audio"), collector.hash_audio)
                 for offset, text in enumerate(texts):
                     location = f"{path}#batch={batch_index}&row={offset}"
                     # FLEURS ``id`` is the sentence, read by several speakers.
                     clip_id = f"{identifiers[offset]}/{names[offset] or offset}"
                     if sizes[offset] == 0:
                         no_audio.append(location)
-                    elif not collector.clip("fleurs", split, clip_id, names[offset], location, text):
+                    elif not collector.clip("fleurs", split, clip_id, names[offset], location, text, hashes[offset]):
                         empty.append(location)
         collector.problem("fleurs", split, METADATA_WITHOUT_AUDIO, missing + no_audio)
         collector.problem("fleurs", split, AUDIO_WITHOUT_TEXT, empty)
@@ -222,8 +258,9 @@ def opentts(collector: Collector, config: dict) -> None:
         meta = voice_dir / "train.jsonl"
         archive = root / "data" / f"{voice}.zip"
         members: dict[str, zipfile.ZipInfo] = {}
-        if archive.is_file():
-            with zipfile.ZipFile(archive) as zipped:
+        zipped = zipfile.ZipFile(archive) if archive.is_file() else None
+        try:
+            if zipped is not None:
                 for info in zipped.infolist():
                     name = Path(info.filename).name
                     if info.is_dir() or Path(name).suffix.lower() not in AUDIO_SUFFIXES:
@@ -231,26 +268,32 @@ def opentts(collector: Collector, config: dict) -> None:
                     if name in members:
                         collisions.append(f"{archive}!{info.filename}")
                     members[name] = info
-        else:
-            missing.append(str(archive))
-        if not meta.is_file():
-            extra.extend(f"{archive}!{info.filename}" for info in members.values())
-            continue
-        referenced: set[str] = set()
-        for line_number, line in enumerate(meta.read_text(encoding="utf-8").splitlines(), start=1):
-            if not line.strip():
+            else:
+                missing.append(str(archive))
+            if not meta.is_file():
+                extra.extend(f"{archive}!{info.filename}" for info in members.values())
                 continue
-            row = json.loads(line)
-            name = Path(str(row.get("audio") or "")).name
-            info = members.get(name)
-            if info is None or info.file_size == 0:
-                missing.append(f"{meta}:{line_number}")
-                continue
-            referenced.add(name)
-            location = f"{archive}!{info.filename}"
-            if not collector.clip("opentts", "train", f"{voice}/{name}", name, location, row.get("text")):
-                empty.append(location)
-        extra.extend(f"{archive}!{info.filename}" for name, info in members.items() if name not in referenced)
+            referenced: set[str] = set()
+            for line_number, line in enumerate(meta.read_text(encoding="utf-8").splitlines(), start=1):
+                if not line.strip():
+                    continue
+                row = json.loads(line)
+                name = Path(str(row.get("audio") or "")).name
+                info = members.get(name)
+                if info is None or info.file_size == 0:
+                    missing.append(f"{meta}:{line_number}")
+                    continue
+                referenced.add(name)
+                location = f"{archive}!{info.filename}"
+                if not normalize_text(row.get("text")):
+                    empty.append(location)
+                    continue
+                digest = audio_hash(zipped.read(info)) if collector.hash_audio else ""
+                collector.clip("opentts", "train", f"{voice}/{name}", name, location, row.get("text"), digest)
+            extra.extend(f"{archive}!{info.filename}" for name, info in members.items() if name not in referenced)
+        finally:
+            if zipped is not None:
+                zipped.close()
     collector.problem("opentts", "train", METADATA_WITHOUT_AUDIO, missing)
     collector.problem("opentts", "train", AUDIO_WITHOUT_METADATA, extra)
     collector.problem("opentts", "train", AUDIO_WITHOUT_TEXT, empty)
@@ -275,13 +318,13 @@ def parquet_dataset(collector: Collector, config: dict, dataset: str) -> None:
             for group in range(parquet.num_row_groups):
                 table = parquet.read_row_group(group, columns=[text_column, "audio"])
                 texts = table.column(text_column).to_pylist()
-                sizes, names = audio_fields(table.column("audio"))
+                sizes, names, hashes = audio_fields(table.column("audio"), collector.hash_audio)
                 for offset, text in enumerate(texts):
                     location = f"{path}#rowgroup={group}&row={offset}"
                     clip_id = f"{path.name}:{group}:{offset}"
                     if sizes[offset] == 0:
                         no_audio.append(location)
-                    elif not collector.clip(dataset, split, clip_id, names[offset], location, text):
+                    elif not collector.clip(dataset, split, clip_id, names[offset], location, text, hashes[offset]):
                         empty.append(location)
         collector.problem(dataset, split, METADATA_WITHOUT_AUDIO, no_audio)
         collector.problem(dataset, split, AUDIO_WITHOUT_TEXT, empty)
@@ -339,13 +382,15 @@ def voa(collector: Collector, config: dict) -> None:
     collector.problem("voa", "train", AUDIO_WITHOUT_TEXT, empty)
 
 
-def collect(datasets: list[str], destination: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
+def collect(datasets: list[str], destination: Path, hash_audio: bool = True) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Write ``metadata.parquet`` and ``coverage.csv`` and return them."""
     config = load_config()
     destination.mkdir(parents=True, exist_ok=True)
     print(f"config {CONFIG_PATH}", flush=True)
+    if not hash_audio:
+        print("audio hashing is off: only file names can be matched", flush=True)
 
-    collector = Collector()
+    collector = Collector(hash_audio)
     readers = {
         "common_voice": common_voice,
         "fleurs": fleurs,
@@ -358,12 +403,11 @@ def collect(datasets: list[str], destination: Path) -> tuple[pd.DataFrame, pd.Da
             parquet_dataset(collector, config, dataset)
         else:
             readers[dataset](collector, config)
-        print(f"{dataset}: {len(collector.rows) - before} clips with text", flush=True)
+        added = collector.rows[before:]
+        hashed = sum(1 for row in added if row["audio_sha256"])
+        print(f"{dataset}: {len(added)} clips with text, {hashed} with audio SHA-256", flush=True)
 
-    metadata = pd.DataFrame(
-        collector.rows,
-        columns=["dataset", "split", "id", "audio_name", "location", "text", "text_norm", "words"],
-    )
+    metadata = pd.DataFrame(collector.rows, columns=METADATA_COLUMNS)
     coverage = pd.DataFrame(collector.coverage, columns=["dataset", "split", "problem", "count", "example"])
     metadata.to_parquet(destination / METADATA_NAME, index=False)
     coverage.to_csv(destination / COVERAGE_NAME, index=False)
@@ -383,7 +427,7 @@ def collect(datasets: list[str], destination: Path) -> tuple[pd.DataFrame, pd.Da
 
 def main() -> None:
     args = parse_args()
-    collect(args.datasets, output_dir(args.output))
+    collect(args.datasets, output_dir(args.output), hash_audio=not args.no_audio_hash)
 
 
 if __name__ == "__main__":

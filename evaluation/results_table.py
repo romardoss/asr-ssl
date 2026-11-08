@@ -16,9 +16,12 @@ from __future__ import annotations
 
 import argparse
 import csv
+import fcntl
 import json
+import os
 import re
 import sys
+from contextlib import contextmanager
 from pathlib import Path
 
 import yaml
@@ -30,6 +33,8 @@ if str(ROOT) not in sys.path:
 from project_config import load_config, repo_path  # noqa: E402
 
 TABLE_NAME = "results.csv"
+# Held while the table is rewritten, so two evaluations that end together both keep their row.
+LOCK_NAME = ".results.csv.lock"
 RESULTS_NAME = "results.json"
 META_NAME = "meta.yaml"
 CONFIG_NAME = "config.yaml"
@@ -165,7 +170,7 @@ def _write(path: Path, rows: list[dict]) -> None:
     columns = list(RUN_COLUMNS) + _metric_columns(rows)
     rows = sorted(rows, key=lambda row: (str(row.get("evaluated_at") or ""), row["run"]))
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(".csv.tmp")
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
     with temporary.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=columns, extrasaction="ignore")
         writer.writeheader()
@@ -181,15 +186,28 @@ def _read(path: Path) -> list[dict]:
         return [{key: (value if value != "" else None) for key, value in row.items()} for row in csv.DictReader(handle)]
 
 
+@contextmanager
+def _locked(evaluation_dir: Path):
+    """Only one process reads and rewrites the table at a time."""
+    evaluation_dir.mkdir(parents=True, exist_ok=True)
+    with (evaluation_dir / LOCK_NAME).open("w") as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle, fcntl.LOCK_UN)
+
+
 def add_run(run: Path, evaluation_dir: Path) -> Path:
     """Add or replace the row of ``run`` in ``<evaluation_dir>/results.csv``."""
     row = run_row(run, evaluation_dir)
     if row is None:
         raise SystemExit(f"No {RESULTS_NAME} in {run}")
     table = evaluation_dir / TABLE_NAME
-    rows = [existing for existing in _read(table) if existing.get("run") != row["run"]]
-    rows.append(row)
-    _write(table, rows)
+    with _locked(evaluation_dir):
+        rows = [existing for existing in _read(table) if existing.get("run") != row["run"]]
+        rows.append(row)
+        _write(table, rows)
     return table
 
 
@@ -207,7 +225,8 @@ def rebuild(evaluation_dir: Path) -> Path:
     if not rows:
         raise SystemExit(f"No {RESULTS_NAME} under {evaluation_dir}")
     table = evaluation_dir / TABLE_NAME
-    _write(table, rows)
+    with _locked(evaluation_dir):
+        _write(table, rows)
     return table
 
 

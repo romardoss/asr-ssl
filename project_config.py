@@ -46,6 +46,35 @@ def load_config(path: Path | None = None) -> dict:
     return loaded
 
 
+def configured_gpu(loaded: dict | None = None) -> int:
+    """The one GPU of every stage: the index of the single ``gpus.nvidiaN: true``."""
+    config = loaded if loaded is not None else load_config()
+    section = config.get("gpus")
+    if not isinstance(section, dict):
+        raise SystemExit(f"{CONFIG_PATH.name} missing gpus")
+    selected = []
+    for key, value in section.items():
+        if not (key.startswith("nvidia") and key[6:].isdigit()) or not isinstance(value, bool):
+            raise SystemExit(f"{CONFIG_PATH.name} gpus.{key} must be nvidiaN: true or false")
+        if value:
+            selected.append(int(key[6:]))
+    if len(selected) != 1:
+        raise SystemExit(f"Enable exactly one GPU in {CONFIG_PATH.name} (gpus.nvidiaN: true).")
+    return selected[0]
+
+
+def pin_gpu(loaded: dict | None = None) -> int:
+    """Show only the configured GPU to this process. Call before CUDA starts.
+
+    A process started by a distributed launcher (``LOCAL_RANK`` set) keeps the
+    mask its parent set.
+    """
+    index = configured_gpu(loaded)
+    if "LOCAL_RANK" not in os.environ:
+        os.environ["CUDA_VISIBLE_DEVICES"] = str(index)
+    return index
+
+
 def config_value(loaded: dict, dotted: str):
     node = loaded
     for part in dotted.split("."):

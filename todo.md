@@ -10,7 +10,7 @@
 
 2. [ ] **Перевірка перетину сплітів у завантажувачі.** `load_configured_splits` або `load_split` має зупиняти запуск, якщо train перетинається з dev чи test за кліпом (`path`/ID). Спільні речення й диктори помилкою не вважати.
 
-3. [ ] **`cv10_test` проти train Common Voice.** Кліпи CV10 test, імовірно, є у `validated` CV27, а отже в train. Звірити за хешем аудіо, іменем файлу й текстом. Код є лише в розділах 4–5 `datasets/leak-clean/README.md`, його треба зберегти у файл. Якщо перетин є, прибрати ці кліпи з train або вилучити `cv10_test` з `data.test`.
+3. [ ] **`cv10_test` проти train Common Voice.** Кліпи CV10 test, імовірно, є у `validated` CV27, а отже в train. Перевірку за іменем файлу й SHA-256 аудіо тепер робить `datasets/leak-clean/check_leaks.py` (розділ «Те саме аудіо» в `report.md`, кліпи в `audio_matches.csv`). Запустити на сервері в межах пункту 6. Якщо перетин є, прибрати ці кліпи з train або вилучити `cv10_test` з `data.test`.
 
 4. [ ] **Перейменувати запуски student з ablation за оцінками судді.** Усі мають назву `student_whisper-commonvoice-based`, тож теки оцінок і легенда `batch-compare.py` їх не розрізняють. У `results.csv` вони вже розрізняються за колонкою `accepted_marks`.
 
@@ -70,8 +70,8 @@
    Щоб не повторилося: перед кожним ablation змінювати `student.name` або додати в `fine-tune-student.py` автоматичний суфікс з `accepted_mark`.
 
 5. [ ] **Відкриті пункти аудиту `REVIEW_FINDINGS.md` (2026-11-03).**
-   1. Пункт 3: `fine-tune/checkpoints.py` досі має `range(5, 101, ...)`, тому чекпоінти student зберігаються на 5, 30, 55 і 80 % епохи.
+   1. Пункт 3 виправлено: один глобальний `checkpoint_every: 0.25` зберігає на 25, 50 і 75 %.
    2. Пункт 4 (`bf16-true`) виправлено в конфігах (`bf16-mixed`), лишилося перенавчити (пункт 1).
    3. Пункти 5–32 звірити з кодом і позначити виправлені.
 
-6. [ ] **Перевірка датасетів на витоки на сервері.** Виконати `env/bin/python datasets/leak-clean/check_leaks.py`, на Vast — з `ASR_CONFIG=config.vast.yaml`, і прочитати `output/leak-clean/report.md`. Для VOA потрібен `labels.csv` вчителя. Скрипт порівнює лише текст. Тому для хешу, імені файлу й диктора потрібен пункт 3, а пошук речень CV dev/test усередині псевдоміток VOA (README, розділ 3, крок 6) ще не реалізовано.
+6. [ ] **Перевірка датасетів на витоки на сервері.** Виконати `env/bin/python datasets/leak-clean/check_leaks.py`, на Vast — з `ASR_CONFIG=config.vast.yaml`, і прочитати `output/leak-clean/report.md`. Для VOA потрібен `labels.csv` вчителя. Скрипт порівнює текст, ім'я аудіофайлу й SHA-256 аудіо, тож заодно закриває перевірку з пункту 3. Не реалізовано: перевірку за диктором для датасетів, крім Common Voice, і пошук речень CV dev/test усередині псевдоміток VOA (README, розділ 3, крок 6).

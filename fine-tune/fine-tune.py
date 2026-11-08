@@ -62,7 +62,7 @@ from lightning.pytorch.strategies import DDPStrategy
 from torch.utils.data import DataLoader, Dataset
 from transformers import WhisperForConditionalGeneration, WhisperProcessor, get_linear_schedule_with_warmup
 
-from checkpoints import BatchFractionCheckpoint, numbered_checkpoint_dir, resume_checkpoint
+from checkpoints import BatchFractionCheckpoint, numbered_checkpoint_dir, remove_mid_epoch, resume_checkpoint
 from init_weights import load_init_model
 from run_meta import chain_fields, cv_train_rows, run_note
 from plot_metrics import write_plots
@@ -484,6 +484,12 @@ def main() -> None:
         baseline_metrics = dict(module.val_metrics)
 
     trainer.fit(module, train_loader, dev_loader, ckpt_path=ckpt_path)
+
+    # A finished run needs only the end of each epoch; an interrupted one keeps everything to resume.
+    if cfg.remove_mid_epoch_checkpoints and trainer.is_global_zero and not trainer.interrupted:
+        cleaned = remove_mid_epoch(ckpt_dir)
+        if cleaned:
+            log.info(cleaned)
 
     if trainer.is_global_zero:
         payload = {

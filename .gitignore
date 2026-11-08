@@ -5,3 +5,4 @@ __pycache__/
 output/
 datasets/common-voice/*.csv
 .vast/
+evaluation/.results.csv.lock

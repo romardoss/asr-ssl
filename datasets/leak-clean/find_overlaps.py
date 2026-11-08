@@ -48,6 +48,41 @@ def parse_args() -> argparse.Namespace:
     return args
 
 
+def repeat_groups(frame: pd.DataFrame, key: str) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Clips whose ``key`` occurs more than once, and one row per repeated value.
+
+    ``frame`` needs ``dataset``, ``unit``, ``id`` and ``key``. The clips get
+    ``group``, ``kind``, ``copies`` and ``units`` (every dataset/split with this
+    value) and come sorted by group. Groups are numbered from 1, between
+    datasets first, then by copies.
+    """
+    copies = frame.groupby(key)["unit"].transform("size")
+    repeated = frame[copies > 1].copy()
+    if repeated.empty:
+        group_columns = ["copies", "n_units", "n_datasets", "units", "kind", "kind_rank", "group"]
+        for column in ("group", "kind", "copies", "units", "unit_rank"):
+            repeated[column] = pd.Series(dtype=object)
+        return repeated, pd.DataFrame(columns=group_columns)
+
+    groups = repeated.groupby(key).agg(
+        copies=("unit", "size"),
+        n_units=("unit", "nunique"),
+        n_datasets=("dataset", "nunique"),
+        units=("unit", lambda values: "; ".join(sorted(set(values), key=unit_key))),
+    )
+    groups["kind"] = "within_split"
+    groups.loc[groups["n_units"] > 1, "kind"] = "between_splits"
+    groups.loc[groups["n_datasets"] > 1, "kind"] = "between_datasets"
+    groups["kind_rank"] = groups["kind"].map(KINDS.index)
+    groups = groups.sort_values(["kind_rank", "copies"], ascending=[True, False])
+    groups["group"] = range(1, len(groups) + 1)
+
+    repeated = repeated.join(groups[["group", "kind", "copies", "units"]], on=key)
+    repeated["unit_rank"] = repeated["unit"].map(unit_key)
+    repeated = repeated.sort_values(["group", "unit_rank", "id"])
+    return repeated, groups
+
+
 def find(folder: Path, min_words: int = 1) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Write ``duplicates.csv`` and ``units.csv`` from ``metadata.parquet`` and return them."""
     metadata_path = folder / METADATA_NAME
@@ -63,25 +98,7 @@ def find(folder: Path, min_words: int = 1) -> tuple[pd.DataFrame, pd.DataFrame]:
     units.to_csv(folder / UNITS_NAME, index=False)
 
     compared = metadata[metadata["words"] >= min_words]
-    copies = compared.groupby("text_norm")["unit"].transform("size")
-    duplicates = compared[copies > 1].copy()
-
-    groups = duplicates.groupby("text_norm").agg(
-        copies=("unit", "size"),
-        n_units=("unit", "nunique"),
-        n_datasets=("dataset", "nunique"),
-        units=("unit", lambda values: "; ".join(sorted(set(values), key=unit_key))),
-    )
-    groups["kind"] = "within_split"
-    groups.loc[groups["n_units"] > 1, "kind"] = "between_splits"
-    groups.loc[groups["n_datasets"] > 1, "kind"] = "between_datasets"
-    groups["kind_rank"] = groups["kind"].map(KINDS.index)
-    groups = groups.sort_values(["kind_rank", "copies"], ascending=[True, False])
-    groups["group"] = range(1, len(groups) + 1)
-
-    duplicates = duplicates.join(groups[["group", "kind", "copies", "units"]], on="text_norm")
-    duplicates["unit_rank"] = duplicates["unit"].map(unit_key)
-    duplicates = duplicates.sort_values(["group", "unit_rank", "id"])
+    duplicates, groups = repeat_groups(compared, "text_norm")
     columns = ["group", "kind", "text_norm", "words", "copies", "units", "dataset", "split", "id", "audio_name", "location", "text"]
     duplicates[columns].to_csv(folder / DUPLICATES_NAME, index=False)
 

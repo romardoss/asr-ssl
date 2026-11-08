@@ -1,21 +1,26 @@
 """Check every dataset for repeats and leaks and write one readable report.
 
-Runs the three steps in order and then writes ``report.md``:
+Runs the four steps in order and then writes ``report.md``:
 
-1. ``collect_metadata.py``: one metadata row per clip, and whether every
-   audio has metadata (``metadata.parquet``, ``coverage.csv``);
+1. ``collect_metadata.py``: one metadata row per clip with the SHA-256 of
+   its audio, and whether every audio has metadata (``metadata.parquet``,
+   ``coverage.csv``);
 2. ``find_overlaps.py``: clips whose normalized text occurs more than once
    (``duplicates.csv``, ``units.csv``);
-3. ``plot_overlaps.py``: plots in ``plots/``.
+3. ``find_audio_matches.py``: clips whose audio file name or SHA-256 occurs
+   more than once (``audio_matches.csv``);
+4. ``plot_overlaps.py``: plots in ``plots/``.
 
-``report.md`` sums them up: what was checked, which dev and test clips have a
-text that is also in train and where it comes from, repeats inside and
-between datasets, audio without metadata, and the plots. Everything goes to
+``report.md`` sums them up: what was checked, which dev and test clips have
+the same audio in train, which have a text that is also in train and where it
+comes from, repeats inside and between datasets, audio without metadata, and
+the plots. Everything goes to
 ``output/leak-clean/``. Paths come from the config (``config.yaml`` or
 ``ASR_CONFIG``).
 
     python datasets/leak-clean/check_leaks.py
     python datasets/leak-clean/check_leaks.py --datasets common_voice cv10_test
+    python datasets/leak-clean/check_leaks.py --no-audio-hash
 """
 
 from __future__ import annotations
@@ -29,6 +34,7 @@ from pathlib import Path
 import pandas as pd
 
 from collect_metadata import collect
+from find_audio_matches import find_audio
 from find_overlaps import KINDS, find
 from leak_common import CONFIG_PATH, DATASET_ORDER, ROOT, output_dir, unit_key
 from plot_overlaps import LONG_TEXT_WORDS, PROBLEM_LABELS, SKIPPED_LABELS, plot
@@ -36,6 +42,9 @@ from plot_overlaps import LONG_TEXT_WORDS, PROBLEM_LABELS, SKIPPED_LABELS, plot
 REPORT_NAME = "report.md"
 EXAMPLES = 15
 TEXT_WIDTH = 90
+
+KEY_LABELS = {"name": "ім'я файлу", "sha256": "SHA-256 аудіо"}
+SAME_BYTES_LABELS = {"yes": "так", "no": "ні", "unknown": "невідомо"}
 
 KIND_LABELS = {
     "between_datasets": "між різними датасетами",
@@ -54,6 +63,11 @@ def parse_args() -> argparse.Namespace:
         help="Datasets to check. Default: all.",
     )
     parser.add_argument("--output", type=Path, default=None, help="Output folder. Default: output/leak-clean.")
+    parser.add_argument(
+        "--no-audio-hash",
+        action="store_true",
+        help="Do not read audio bytes for SHA-256. Faster, but audio is then matched only by file name.",
+    )
     return parser.parse_args()
 
 
@@ -98,7 +112,7 @@ def eval_leaks(duplicates: pd.DataFrame, units: pd.DataFrame) -> pd.DataFrame:
     copies = duplicates[duplicates["split"] != "train"].copy()
     copies["unit"] = copies["dataset"] + "/" + copies["split"]
     copies["trains"] = copies["units"].map(lambda listed: [unit for unit in listed.split("; ") if unit.endswith("/train")])
-    copies = copies[copies["trains"].map(bool)]
+    copies = copies[copies["trains"].map(bool).astype(bool)]
     rows = []
     for unit in evaluated:
         chosen = copies[copies["unit"] == unit]
@@ -127,6 +141,9 @@ def write_report(
     coverage: pd.DataFrame,
     duplicates: pd.DataFrame,
     units: pd.DataFrame,
+    audio_matches: pd.DataFrame,
+    audio_leaks: pd.DataFrame,
+    ignored_names: list[str],
     plots: list[Path],
 ) -> Path:
     coverage = coverage.assign(count=coverage["count"].astype(int))
@@ -170,6 +187,25 @@ def write_report(
                 f"кліпів ({share(worst['long'], worst['clips'])}) мають текст від {LONG_TEXT_WORDS} слів, що є в train. "
                 f"Таких dev/test сплітів {len(flagged)} з {len(leaks)}."
             )
+    hashed = int(audio_leaks["hashed"].sum()) if not audio_leaks.empty else 0
+    if audio_leaks.empty:
+        summary.append("Немає жодного dev чи test спліту, тож те саме аудіо в train не шукалося.")
+    else:
+        flagged_audio = audio_leaks[audio_leaks["either"] > 0]
+        if flagged_audio.empty:
+            summary.append(
+                "Того самого аудіо (за іменем файлу чи SHA-256) у dev/test і train не знайдено. "
+                f"SHA-256 є для {spaced(hashed)} з {spaced(audio_leaks['clips'].sum())} кліпів dev і test."
+            )
+        else:
+            summary.append(
+                "**Те саме аудіо в train:** "
+                + "; ".join(
+                    f"`{row.unit}` {spaced(row.either)} з {spaced(row.clips)} ({share(row.either, row.clips)})"
+                    for row in flagged_audio.itertuples(index=False)
+                )
+                + ". Див. розділ 2."
+            )
     summary.append(
         "Повтори текстів: "
         + "; ".join(
@@ -178,7 +214,7 @@ def write_report(
         )
         + "."
     )
-    pairs = f"{spaced(problems['count'].sum())} випадків, див. розділ 4." if not problems.empty else "не знайдено."
+    pairs = f"{spaced(problems['count'].sum())} випадків, див. розділ 5." if not problems.empty else "не знайдено."
     if not_checked_audio:
         pairs += f" Аудіо не перевірено для: {', '.join(not_checked_audio)}."
     summary.append("Аудіо й метадані без пари: " + pairs)
@@ -196,9 +232,72 @@ def write_report(
             for number, row in enumerate(skipped.itertuples(index=False), start=1)
         ]
 
+    lines += ["", "## 2. Те саме аудіо в dev/test і train", ""]
+    lines += [
+        "Той самий запис у train і в оцінці — найпряміший витік: модель чула саме цей кліп. "
+        "Шукається за двома ключами. «Ім'я файлу» — збережене ім'я аудіо; для Common Voice і `cv10_test` це "
+        "`common_voice_uk_*.mp3`, яке не змінюється між версіями. Імена, що повторюються всередині одного спліту, "
+        "не вважаються ідентифікатором і пропускаються. «SHA-256» — хеш закодованих байтів аудіо: ловить копії й "
+        "перейменовані файли, але не перекодовані. «Ті самі байти» показує, скільки збігів за іменем мають і "
+        "однаковий хеш; збіг імені з різними байтами треба перевірити вручну.",
+        "",
+    ]
+    if audio_leaks.empty:
+        lines.append("Немає жодного dev чи test спліту.")
+    else:
+        lines += table(
+            ["Спліт", "Кліпів", "З SHA-256", "За іменем", "З них ті самі байти", "За SHA-256", "Разом", "Звідки"],
+            [
+                [
+                    row.unit,
+                    spaced(row.clips),
+                    spaced(row.hashed),
+                    spaced(row.name),
+                    spaced(row.name_same_bytes),
+                    spaced(row.sha256),
+                    f"{spaced(row.either)} ({share(row.either, row.clips)})",
+                    row.sources or "—",
+                ]
+                for row in audio_leaks.itertuples(index=False)
+            ],
+        )
+    if hashed == 0:
+        lines += ["", "SHA-256 не обчислено (аудіо немає на диску або запуск з `--no-audio-hash`), тож порівняно лише імена файлів."]
+    if ignored_names:
+        lines += [
+            "",
+            f"Пропущено {spaced(len(ignored_names))} імен файлів, що повторюються всередині спліту "
+            f"(наприклад, `{cell(ignored_names[0])}`).",
+        ]
+    audio_groups = audio_matches.drop_duplicates(["key", "group"])
+    lines += ["", "Повтори аудіо за типом:", ""]
+    lines += table(
+        ["Ключ"] + [KIND_LABELS[kind] for kind in KINDS],
+        [
+            [KEY_LABELS[key]]
+            + [
+                f"{spaced(((audio_groups['key'] == key) & (audio_groups['kind'] == kind)).sum())} груп, "
+                f"{spaced(audio_groups.loc[(audio_groups['key'] == key) & (audio_groups['kind'] == kind), 'copies'].astype(int).sum())} кліпів"
+                for kind in KINDS
+            ]
+            for key in KEY_LABELS
+        ],
+    )
+    crossing = audio_matches[(audio_matches["kind"] != "within_split") & (audio_matches["split"] != "train")]
+    crossing = crossing[crossing["units"].str.contains("/train", regex=False)].drop_duplicates(["key", "group"])
+    if not crossing.empty:
+        lines += ["", f"Приклади збігів dev/test з train (до {EXAMPLES}):", ""]
+        lines += table(
+            ["Ключ", "Кліп", "Ті самі байти", "Де трапляється", "Текст"],
+            [
+                [KEY_LABELS[row.key], row.audio_name or row.id, SAME_BYTES_LABELS[row.same_bytes], row.units, row.text_norm]
+                for row in crossing.head(EXAMPLES).itertuples(index=False)
+            ],
+        )
+
     lines += [
         "",
-        "## 2. Тексти dev і test, що є в train",
+        "## 3. Тексти dev і test, що є в train",
         "",
         f"Частка кліпів оцінки, нормалізований текст яких трапляється в будь-якому train-спліті. "
         f"«Від {LONG_TEXT_WORDS} слів» — головна колонка: це речення, які модель могла запам'ятати. "
@@ -242,7 +341,7 @@ def write_report(
 
     lines += [
         "",
-        "## 3. Повтори текстів",
+        "## 4. Повтори текстів",
         "",
         "Група — один нормалізований текст, що трапляється в кількох кліпах. Повтор усередині спліту не є витоком, "
         "але дає цьому тексту більшу вагу в навчанні чи оцінці.",
@@ -268,7 +367,7 @@ def write_report(
             [[row.text_norm, row.copies, row.units] for row in between.sort_values("copies", ascending=False).head(EXAMPLES).itertuples(index=False)],
         )
 
-    lines += ["", "## 4. Аудіо й метадані без пари", ""]
+    lines += ["", "## 5. Аудіо й метадані без пари", ""]
     if problems.empty:
         lines.append("До кожного перевіреного аудіо є метадані, і до кожного рядка метаданих є аудіо.")
         if not_checked_audio:
@@ -287,17 +386,18 @@ def write_report(
             "`clean_common_voice_train.py`, і кліпи з `invalidated`, якщо вони лежать у `clips/`.",
         ]
 
-    lines += ["", "## 5. Графіки", ""]
+    lines += ["", "## 6. Графіки", ""]
     for path in plots:
         lines += [f"![{path.stem}]({path.relative_to(folder).as_posix()})", ""]
 
     lines += [
-        "## 6. Файли",
+        "## 7. Файли",
         "",
-        "1. `metadata.parquet` — один рядок на кліп: датасет, спліт, ID, ім'я аудіо, точне місце, текст.",
+        "1. `metadata.parquet` — один рядок на кліп: датасет, спліт, ID, ім'я аудіо, SHA-256 аудіо, точне місце, текст.",
         "2. `coverage.csv` — усі перевірки аудіо й метаданих, включно з тими, що нічого не знайшли.",
         "3. `duplicates.csv` — кожен кліп, текст якого трапляється більше одного разу, з групою і всіма сплітами цього тексту.",
-        "4. `units.csv` — кількість кліпів у кожному спліті.",
+        "4. `audio_matches.csv` — кожен кліп, ім'я файлу чи SHA-256 якого трапляється більше одного разу, з ключем, групою і всіма сплітами.",
+        "5. `units.csv` — кількість кліпів у кожному спліті.",
         "",
     ]
     path = folder / REPORT_NAME
@@ -308,15 +408,19 @@ def write_report(
 def main() -> None:
     args = parse_args()
     folder = output_dir(args.output)
-    print("== 1/3 collect metadata", flush=True)
-    metadata, coverage = collect(args.datasets, folder)
+    print("== 1/4 collect metadata", flush=True)
+    metadata, coverage = collect(args.datasets, folder, hash_audio=not args.no_audio_hash)
     if metadata.empty:
         raise SystemExit(f"No clips with text found. See {folder / 'coverage.csv'}.")
-    print("== 2/3 find overlaps", flush=True)
+    print("== 2/4 find text overlaps", flush=True)
     duplicates, units = find(folder)
-    print("== 3/3 plot", flush=True)
+    print("== 3/4 find audio matches", flush=True)
+    audio_matches, audio_leaks, ignored_names = find_audio(folder)
+    print("== 4/4 plot", flush=True)
     plots = plot(folder)
-    report = write_report(folder, args.datasets, metadata, coverage, duplicates, units, plots)
+    report = write_report(
+        folder, args.datasets, metadata, coverage, duplicates, units, audio_matches, audio_leaks, ignored_names, plots
+    )
     print(f"report: {report}", flush=True)
 
 

@@ -11,7 +11,7 @@ VOA batches, so every epoch ends on them. The marks filter does not apply. Dev i
 ``student.val_every`` fraction of an epoch, and the Common Voice test split
 is scored once after training. Checkpoints go to
 ``paths.checkpoints/<student.name>_01/``, then ``_02``, and so on, every
-``student.checkpoint_every`` fraction of an epoch. ``student.resume`` continues
+``checkpoint_every`` fraction of an epoch. ``student.resume`` continues
 an unfinished newest directory. A finished run starts the next directory from
 ``student.init``. The unnumbered ``<student.name>`` directory is the oldest
 run and is left in place. The encoder stays frozen.
@@ -66,7 +66,7 @@ from torch.utils.data import ConcatDataset, DataLoader, Dataset, Sampler
 from tqdm import tqdm
 from transformers import WhisperForConditionalGeneration, WhisperProcessor, get_linear_schedule_with_warmup
 
-from checkpoints import BatchFractionCheckpoint, student_checkpoint_run
+from checkpoints import BatchFractionCheckpoint, remove_mid_epoch, student_checkpoint_run
 from common_voice import load_splits
 from init_weights import load_init_model
 from run_meta import chain_fields, cv_train_rows, read_meta, run_note
@@ -791,6 +791,11 @@ def main() -> None:
         baseline_metrics = dict(module.val_metrics)
 
     trainer.fit(module, train_loader, dev_loader, ckpt_path=ckpt_path)
+    # A finished run needs only the end of each epoch; an interrupted one keeps everything to resume.
+    if cfg.remove_mid_epoch_checkpoints and trainer.is_global_zero and not trainer.interrupted:
+        cleaned = remove_mid_epoch(ckpt_dir)
+        if cleaned:
+            log.info(cleaned)
     trainer.test(module, dataloaders=test_loader)
 
     if trainer.is_global_zero:

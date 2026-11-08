@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))
 
-from project_config import CONFIG_PATH, find_labelling_file, labelling_runs  # noqa: E402,F401
+from project_config import CONFIG_PATH, configured_gpu, find_labelling_file, labelling_runs  # noqa: E402,F401
 from dataset_roles import check_names  # noqa: E402
 
 
@@ -51,6 +51,7 @@ class Settings:
     limit_train_batches: int | float
     limit_val_batches: int | float
     checkpoint_every: float
+    remove_mid_epoch_checkpoints: bool
     max_audio_seconds: float
     max_label_tokens: int
     train_data: tuple[str, ...]
@@ -123,6 +124,15 @@ def _positive_float(section: dict, key: str, label: str) -> float:
     return float(value)
 
 
+def _checkpoint_every(loaded: dict) -> float:
+    """Top-level ``checkpoint_every``: one value for every training stage."""
+    value = _fraction(loaded, "checkpoint_every", "checkpoint_every")
+    percent = value * 100
+    if abs(percent - round(percent)) > 1e-9:
+        raise SystemExit("config.yaml checkpoint_every must be a multiple of 0.01, e.g. 0.25")
+    return value
+
+
 def _fraction(section: dict, key: str, label: str) -> float:
     value = _positive_float(section, key, label)
     if value > 1:
@@ -178,7 +188,6 @@ def load_settings(path: Path | None = None) -> Settings:
 
     paths = _mapping(loaded, "paths")
     model = _mapping(loaded, "model")
-    gpus = _mapping(loaded, "gpus")
     batches = _mapping(loaded, "batch_size")
     training = _mapping(loaded, "training")
     data = _mapping(loaded, "data")
@@ -197,7 +206,7 @@ def load_settings(path: Path | None = None) -> Settings:
         model_id=_text(model, "id", "model.id"),
         model_name=_text(model, "name", "model.name"),
         language=_text(model, "language", "model.language"),
-        gpus=_gpus(gpus, "gpus"),
+        gpus=(configured_gpu(loaded),),
         train_batch_size=_positive_int(batches, "train", "batch_size.train"),
         testing_after_train_batch_size=_positive_int(
             batches, "testing_after_train", "batch_size.testing_after_train"
@@ -215,7 +224,8 @@ def load_settings(path: Path | None = None) -> Settings:
         baseline_eval=_bool(training, "baseline_eval", "training.baseline_eval"),
         limit_train_batches=_limit(training, "limit_train_batches", "training.limit_train_batches"),
         limit_val_batches=_limit(training, "limit_val_batches", "training.limit_val_batches"),
-        checkpoint_every=_fraction(training, "checkpoint_every", "training.checkpoint_every"),
+        checkpoint_every=_checkpoint_every(loaded),
+        remove_mid_epoch_checkpoints=_bool(loaded, "remove_mid_epoch_checkpoints", "remove_mid_epoch_checkpoints"),
         max_audio_seconds=_positive_float(data, "max_audio_seconds", "data.max_audio_seconds"),
         max_label_tokens=_positive_int(data, "max_label_tokens", "data.max_label_tokens"),
         train_data=_role_names(data, "train", "data.train"),
@@ -257,6 +267,7 @@ class StudentSettings:
     limit_val_batches: int | float
     limit_test_batches: int | float
     checkpoint_every: float
+    remove_mid_epoch_checkpoints: bool
     val_every: float
     max_audio_seconds: float
     max_label_tokens: int
@@ -308,18 +319,6 @@ def _mark_list(section: dict, key: str, label: str) -> tuple[int, ...]:
     return tuple(marks)
 
 
-def _gpus(section: dict, label: str) -> tuple[int, ...]:
-    """Training runs on one GPU. Exactly one of nvidia0 and nvidia1 must be true."""
-    selected = []
-    for index in (0, 1):
-        key = f"nvidia{index}"
-        if _bool(section, key, f"{label}.{key}"):
-            selected.append(index)
-    if len(selected) != 1:
-        raise SystemExit(f"Enable exactly one GPU in config.yaml ({label}.nvidia0 or {label}.nvidia1).")
-    return tuple(selected)
-
-
 def load_student_settings(path: Path | None = None) -> StudentSettings:
     config_path = path or CONFIG_PATH
     if not config_path.is_file():
@@ -359,7 +358,8 @@ def load_student_settings(path: Path | None = None) -> StudentSettings:
         sample_rate=_positive_int(student, "sample_rate", "student.sample_rate"),
         language=_text(student, "language", "student.language"),
         eval_data=eval_data,
-        gpus=_gpus(_mapping(student, "gpus"), "student.gpus"),
+        # One GPU for the whole project: the top-level gpus section.
+        gpus=(configured_gpu(loaded),),
         train_batch_size=_positive_int(batches, "train", "student.batch_size.train"),
         eval_batch_size=_positive_int(batches, "eval", "student.batch_size.eval"),
         learning_rate=_positive_float(student, "learning_rate", "student.learning_rate"),
@@ -375,7 +375,8 @@ def load_student_settings(path: Path | None = None) -> StudentSettings:
         limit_train_batches=_limit(student, "limit_train_batches", "student.limit_train_batches"),
         limit_val_batches=_limit(student, "limit_val_batches", "student.limit_val_batches"),
         limit_test_batches=_limit(student, "limit_test_batches", "student.limit_test_batches"),
-        checkpoint_every=_fraction(student, "checkpoint_every", "student.checkpoint_every"),
+        checkpoint_every=_checkpoint_every(loaded),
+        remove_mid_epoch_checkpoints=_bool(loaded, "remove_mid_epoch_checkpoints", "remove_mid_epoch_checkpoints"),
         val_every=_fraction(student, "val_every", "student.val_every"),
         max_audio_seconds=_positive_float(student, "max_audio_seconds", "student.max_audio_seconds"),
         max_label_tokens=_positive_int(student, "max_label_tokens", "student.max_label_tokens"),

@@ -24,7 +24,9 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from voa_dataset import iter_shard_clips, shards
-from project_config import config_file, config_int, config_text, load_config
+from project_config import config_file, config_int, config_text, load_config, pin_gpu
+
+pin_gpu()
 
 CONFIG = load_config()
 DEFAULT_MODEL_ID = config_text(CONFIG, "pipeline.mms_model")

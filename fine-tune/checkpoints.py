@@ -2,7 +2,9 @@
 
 Lightning's ``trainer.save_checkpoint(..., weights_only=False)`` stores the
 model weights together with ``optimizer_states`` and ``lr_schedulers``, so a
-later ``Trainer.fit(ckpt_path=...)`` continues from the same step.
+later ``Trainer.fit(ckpt_path=...)`` continues from the same step. When a run
+finishes, ``remove_mid_epoch`` deletes its mid-epoch saves and keeps the end
+of every epoch.
 """
 
 from __future__ import annotations
@@ -14,6 +16,31 @@ from pathlib import Path
 import lightning as L
 
 from run_meta import copy_config, write_meta
+
+
+MID_EPOCH = re.compile(r"-epoch\d+-batch\d+pct\.ckpt$")
+
+
+def remove_mid_epoch(directory: Path, dry_run: bool = False) -> str | None:
+    """Delete the mid-epoch checkpoints of a finished run and say what was done.
+
+    The end of every epoch and ``last.ckpt`` stay. Nothing is deleted while
+    ``last.ckpt`` points to a mid-epoch file: that run is unfinished and may
+    still resume from it. Returns None when there was nothing to delete.
+    """
+    directory = Path(directory)
+    last = directory / "last.ckpt"
+    if last.is_symlink() and MID_EPOCH.search(last.readlink().name):
+        return f"kept mid-epoch checkpoints in {directory}: last.ckpt points to one"
+    files = sorted(path for path in directory.glob("*.ckpt") if not path.is_symlink() and MID_EPOCH.search(path.name))
+    if not files:
+        return None
+    size = sum(path.stat().st_size for path in files) / 1e9
+    if dry_run:
+        return f"would delete {len(files)} mid-epoch checkpoints ({size:.1f} GB) in {directory}"
+    for path in files:
+        path.unlink()
+    return f"deleted {len(files)} mid-epoch checkpoints ({size:.1f} GB) in {directory}"
 
 
 def latest_checkpoint(directory: Path) -> Path | None:
@@ -135,7 +162,7 @@ class BatchFractionCheckpoint(L.Callback):
     """Save a full training checkpoint every ``fraction`` of an epoch, and at epoch end.
 
     Filenames carry the model name, the epoch, and the batch percentage, for
-    example ``model-whisper-uk-epoch00-batch05pct.ckpt``.
+    example ``model-whisper-uk-epoch00-batch25pct.ckpt``.
     """
 
     def __init__(self, dirpath: Path, model_name: str, fraction: float = 0.05, meta: dict | None = None):
@@ -173,7 +200,9 @@ class BatchFractionCheckpoint(L.Callback):
     def on_train_epoch_start(self, trainer: L.Trainer, pl_module: L.LightningModule) -> None:
         batches = self._batches_this_epoch(trainer)
         targets: dict[int, int] = {}
-        for percent in range(5, 101, int(self.fraction * 100)):
+        # checkpoint_every 0.25 saves at 25, 50, and 75 %. The end of the epoch has its own save.
+        step = round(self.fraction * 100)
+        for percent in range(step, 100, step):
             batch_number = max(1, int(round(batches * percent / 100)))
             batch_number = min(batch_number, batches)
             targets.setdefault(batch_number, percent)

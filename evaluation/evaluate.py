@@ -469,12 +469,27 @@ def write_plots(run_dir: Path, metrics: dict[str, float], references: list[str],
     return written
 
 
+AGGREGATE_SETS = ("combined_weighted", "combined_mean", "combined")
+
+
+def dataset_tick_label(name: str, scored: dict[str, dict[str, float]], aggregates: list[str]) -> str:
+    """Name a test set and, for a single dataset, its share of all test clips."""
+    if name in aggregates:
+        return name
+    total = sum(metrics.get("clips", 0) for key, metrics in scored.items() if key not in AGGREGATE_SETS)
+    clips = scored[name].get("clips")
+    if not total or clips is None:
+        return name
+    return f"{name}\n({clips / total * 100:.1f}%)"
+
+
 def write_dataset_chart(run_dir: Path, scored: dict[str, dict[str, float]]) -> Path | None:
     names = [name for name in scored if "wer" in scored[name] and "cer" in scored[name]]
     if len(names) < 2:
         return None
     # combined_weighted pools all clips. combined_mean weights each dataset equally.
-    aggregates = [name for name in ("combined_weighted", "combined_mean") if name in names]
+    # "combined" is the single aggregate of older results.json files.
+    aggregates = [name for name in AGGREGATE_SETS if name in names]
     names = aggregates + [name for name in names if name not in aggregates]
     positions = list(range(len(names)))
     width = 0.36
@@ -506,7 +521,7 @@ def write_dataset_chart(run_dir: Path, scored: dict[str, dict[str, float]]) -> P
             )
     if aggregates and len(aggregates) < len(names):
         axis.axvline(len(aggregates) - 0.5, color="#888888", linestyle="--", linewidth=1)
-    axis.set_xticks(positions, names)
+    axis.set_xticks(positions, [dataset_tick_label(name, scored, aggregates) for name in names])
     axis.set_ylabel("error rate (%)")
     axis.set_title("WER and CER by test set")
     axis.legend()

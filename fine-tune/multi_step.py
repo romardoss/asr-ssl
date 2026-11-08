@@ -25,6 +25,14 @@ epoch is already saved is skipped, so running the chain again after a crash
 continues where it stopped. To start the same chain over, change
 ``multi_step.name``.
 
+The config is read once, at the start. Evaluation uses a copy of it saved
+then (``output/multi-step/<name>/evaluate.yaml``), so ``config.yaml`` can be
+edited for another run while this chain is still going.
+
+When a step finishes, its mid-epoch checkpoints (``*-epochNN-batchXXpct.ckpt``)
+are deleted, as after any training run; the end of each epoch stays.
+``remove_mid_epoch_checkpoints: false`` in the config keeps them.
+
 ``multi_step.evaluate`` decides what ``evaluate.py`` scores and adds to
 ``results.csv`` (with the ``chain`` and ``step`` columns):
 ``steps`` the final checkpoint of each step, ``all`` also the first epoch of
@@ -51,7 +59,12 @@ ROOT = FINE_TUNE.parent
 if str(FINE_TUNE) not in sys.path:
     sys.path.insert(0, str(FINE_TUNE))
 
-from checkpoints import is_final_epoch_checkpoint, latest_checkpoint, student_checkpoint_dirs  # noqa: E402
+from checkpoints import (  # noqa: E402
+    is_final_epoch_checkpoint,
+    latest_checkpoint,
+    remove_mid_epoch,
+    student_checkpoint_dirs,
+)
 from run_meta import CHAIN_ENV, NOTE_ENV, STEP_ENV  # noqa: E402
 from dataset_roles import check_names  # noqa: E402
 from settings import load_settings, load_student_settings  # noqa: E402
@@ -220,6 +233,15 @@ def write_config(chain: Chain, step: Step, derived: dict) -> Path:
     return path
 
 
+def write_evaluation_config(chain: Chain, config: dict) -> Path:
+    """The config as read at the start, for the evaluations of this chain."""
+    path = OUTPUT_DIR / chain.name / "evaluate.yaml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    header = f"# Written by fine-tune/multi_step.py: {CONFIG_PATH.name} as it was when chain {chain.name} started.\n"
+    path.write_text(header + yaml.safe_dump(config, sort_keys=False, allow_unicode=True), encoding="utf-8")
+    return path
+
+
 def step_note(chain: Chain, step: Step) -> str:
     note = os.environ.get(NOTE_ENV, "").strip()
     where = f"{chain.name} step {step.number}/{len(chain.steps)}: {step.description}"
@@ -239,7 +261,9 @@ def main() -> None:
     args = parse_args()
     config = load_config()
     chain = load_chain(config)
-    checkpoints = load_settings().checkpoints
+    settings = load_settings()
+    checkpoints = settings.checkpoints
+    evaluation_config = write_evaluation_config(chain, config)
     print(f"chain {chain.name}: {len(chain.steps)} steps from {chain.init}", flush=True)
 
     # Check every step's config before the first one trains.
@@ -278,8 +302,12 @@ def main() -> None:
             command = [sys.executable, str(EVALUATE_SCRIPT), "--checkpoint-dir", str(directory)]
             if chain.evaluate != "all":
                 command.append("--final-only")
-            # Score with the main config: data.test and model.id stay those of the project.
-            run(command, {**env, "ASR_CONFIG": str(CONFIG_PATH)}, args.dry_run)
+            # Score with the config as it was at the start: data.test, model.id, and the GPU of this chain.
+            run(command, {**env, "ASR_CONFIG": str(evaluation_config)}, args.dry_run)
+        # The training script already cleaned a step it finished; this covers older or dry runs.
+        cleaned = remove_mid_epoch(directory, args.dry_run) if settings.remove_mid_epoch_checkpoints else None
+        if cleaned:
+            print(cleaned, flush=True)
         previous = str(checkpoint)
 
     print(f"\nchain {chain.name} finished: {previous}", flush=True)

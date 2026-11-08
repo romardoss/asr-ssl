@@ -29,7 +29,9 @@ REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from voa_dataset import DATASET_ID, SPLIT, iter_clips, num_examples
-from project_config import config_file, load_config
+from project_config import config_file, load_config, pin_gpu
+
+pin_gpu()
 
 META_PATH = config_file(load_config(), "voa_prep.whisper_meta")
 ENV_PATH = REPO / ".env"

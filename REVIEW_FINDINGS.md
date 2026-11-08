@@ -39,6 +39,7 @@
    - **Як вирішити:**
      1. У `on_train_epoch_start` рахувати крок як `step = round(self.fraction * 100)` і перебирати `range(step, 100, step)`. Верхня межа 100 не входить, бо кінець епохи вже зберігає `on_train_epoch_end`.
      2. У `fine-tune/settings.py` (`_fraction`) перевіряти, що `checkpoint_every * 100` є цілим числом не менше 1, тобто значення кратне 0,01. Інакше зупиняти запуск з помилкою.
+   - **Статус: виправлено 2026-11-07.** `range(step, 100, step)`, значення кратне 0,01 перевіряється. `checkpoint_every` тепер один, на верхньому рівні конфігу (0.25), а `multi_step` видаляє проміжні чекпоінти кроку після його оцінки.
 
 4. **`precision: bf16-true` при `learning_rate: 1e-5`.**
    - Де: `config.yaml:35` (training), `config.yaml:96` (student)
@@ -103,7 +104,7 @@
 14. **Розбіжність налаштувань між етапами.**
     - Де: `pseudo-labelling/settings.py`, `evaluation/evaluate.py`
     - Суть:
-      1. Labelling і evaluate беруть верхній `gpus`, а не `student.gpus`.
+      1. Labelling і evaluate беруть верхній `gpus`, а не `student.gpus`. **Виправлено 2026-11-07:** `student.gpus` прибрано, усі етапи беруть верхній `gpus`.
       2. `evaluate.py` при оцінці student-чекпоінта бере базу з `model.id`, а не зі `student.base`. Зараз це однакові значення, але якщо їх розвести, ваги не завантажаться.
 
 ---

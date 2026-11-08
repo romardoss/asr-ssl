@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 import sys
 from pathlib import Path
@@ -17,6 +18,7 @@ METADATA_NAME = "metadata.parquet"
 COVERAGE_NAME = "coverage.csv"
 DUPLICATES_NAME = "duplicates.csv"
 UNITS_NAME = "units.csv"
+AUDIO_MATCHES_NAME = "audio_matches.csv"
 PLOTS_DIRNAME = "plots"
 
 DATASET_ORDER = ("common_voice", "fleurs", "opentts", "tg_voices", "ukr_dialects", "cv10_test", "voa")
@@ -29,6 +31,7 @@ _LOOSE_APOSTROPHES = re.compile(r"(?<!\w)'|'(?!\w)")
 _SPACES = re.compile(r"\s+")
 
 __all__ = [
+    "AUDIO_MATCHES_NAME",
     "AUDIO_SUFFIXES",
     "CONFIG_PATH",
     "COVERAGE_NAME",
@@ -40,6 +43,7 @@ __all__ = [
     "ROOT",
     "SPLIT_ORDER",
     "UNITS_NAME",
+    "audio_hash",
     "config_file",
     "config_text",
     "configured_labelling_file",
@@ -65,6 +69,13 @@ def normalize_text(text) -> str:
     text = _PUNCTUATION.sub(" ", text)
     text = _LOOSE_APOSTROPHES.sub(" ", text)
     return _SPACES.sub(" ", text).strip()
+
+
+def audio_hash(data) -> str:
+    """SHA-256 of the encoded audio bytes as stored, or "" when there are none."""
+    if not data:
+        return ""
+    return hashlib.sha256(data).hexdigest()
 
 
 def unit_key(unit: str) -> tuple[int, int, str]:

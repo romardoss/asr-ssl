@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))
 
-from project_config import CONFIG_PATH  # noqa: E402
+from project_config import CONFIG_PATH, configured_gpu  # noqa: E402
 
 
 @dataclass(frozen=True)
@@ -94,18 +94,8 @@ def load_labelling(path: Path | None = None) -> LabellingSettings:
 
     section = _mapping(loaded, "pseudo_labelling")
     model = _mapping(loaded, "model")
-    gpus = _mapping(loaded, "gpus")
     data = _mapping(loaded, "data")
-    selected = []
-    for index in (0, 1):
-        key = f"nvidia{index}"
-        value = _require(gpus, key, f"gpus.{key}")
-        if not isinstance(value, bool):
-            raise SystemExit(f"config.yaml gpus.{key} must be true or false")
-        if value:
-            selected.append(index)
-    if len(selected) != 1:
-        raise SystemExit("Enable exactly one GPU in config.yaml (gpus.nvidia0 or gpus.nvidia1).")
+    selected = [configured_gpu(loaded)]
 
     return LabellingSettings(
         teacher_model=_path(section, "teacher_model", "pseudo_labelling.teacher_model"),

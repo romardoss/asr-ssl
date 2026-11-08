@@ -28,7 +28,7 @@
    4. `plot_metrics.py`: `--model-name` з `model.name`.
 7. Створено `config.vast.yaml` з тими самими ключами, що й `config.yaml`. Відрізняються лише значення, які залежать від машини:
    1. дані в `/workspace/data/<набір>`, чекпоінти в `/workspace/checkpoints`;
-   2. одна GPU `nvidia0` і в `gpus`, і в `student.gpus`;
+   2. одна GPU `nvidia0` у `gpus` (це єдине місце вибору GPU для всіх етапів);
    3. `pipeline.language` і `pipeline.timestamps` мають значення `skip`, бо їхні результати вже є в git.
 
 Запуск на інстансі:
@@ -42,7 +42,9 @@ python main.py pipeline --dry-run
 
 ### 1.2. Вибір GPU через `nvidia0`/`nvidia1`
 
-Де: `config.yaml` (`gpus`, `student.gpus`), `fine-tune/settings.py:296`, `pseudo-labelling/settings.py:90-101`, `fine-tune/fine-tune.py:39-40`, `fine-tune/fine-tune-student.py:36-37`, `pseudo-labelling/label.py:38-39`.
+Де: `config.yaml` (`gpus`), `project_config.py` (`configured_gpu`, `pin_gpu`), `fine-tune/fine-tune.py`, `fine-tune/fine-tune-student.py`, `pseudo-labelling/label.py`.
+
+Стан на 2026-11-07: GPU вибирається лише у верхній секції `gpus`. `student.gpus` прибрано, а етап `language` (`predict_languages.py`, `meta_collector.py`) теж бере цю GPU.
 
 Проблема:
 
@@ -52,7 +54,7 @@ python main.py pipeline --dry-run
 
 Що зробити:
 
-1. ✅ У `config.vast.yaml` увімкнено лише `nvidia0` і в `gpus`, і в `student.gpus`.
+1. ✅ У `config.vast.yaml` увімкнено лише `nvidia0` у `gpus`.
 2. Краще: якщо `CUDA_VISIBLE_DEVICES` уже задано ззовні, не перезаписувати його. Так GPU можна вибирати й засобами vast.ai.
 3. Орендувати інстанс з однією GPU: після незакомічених змін у `settings.py` код дозволяє рівно одну GPU, тож кілька карт не дадуть прискорення.
 

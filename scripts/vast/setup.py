@@ -248,10 +248,9 @@ def make_directories(settings, labelling, hf_home: Path) -> None:
 
 def configured_gpus(loaded: dict) -> set[int]:
     indexes = set()
-    for section in (loaded.get("gpus", {}), loaded.get("student", {}).get("gpus", {})):
-        for key, enabled in section.items():
-            if enabled is True and key.startswith("nvidia") and key[6:].isdigit():
-                indexes.add(int(key[6:]))
+    for key, enabled in loaded.get("gpus", {}).items():
+        if enabled is True and key.startswith("nvidia") and key[6:].isdigit():
+            indexes.add(int(key[6:]))
     return indexes
 
 
