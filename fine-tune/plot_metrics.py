@@ -269,6 +269,10 @@ def plot_test_rates(frame: pd.DataFrame, path: Path) -> bool:
 def write_plots(version_dir: Path) -> list[Path]:
     metrics_path = version_dir / "metrics.csv"
     plots_dir = version_dir / PLOTS_DIRNAME
+    if not metrics_path.is_file():
+        # Nothing was logged, for example a resumed run that had no epochs left.
+        print(f"no {metrics_path}; nothing to plot", flush=True)
+        return []
     frame = load_metrics(metrics_path)
     written: list[Path] = []
 

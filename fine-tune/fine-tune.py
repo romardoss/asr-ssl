@@ -64,7 +64,14 @@ from lightning.pytorch.strategies import DDPStrategy
 from torch.utils.data import DataLoader, Dataset
 from transformers import WhisperForConditionalGeneration, WhisperProcessor, get_linear_schedule_with_warmup
 
-from checkpoints import BatchFractionCheckpoint, numbered_checkpoint_dir, remove_mid_epoch, resume_checkpoint
+from checkpoints import (
+    BatchFractionCheckpoint,
+    is_final_epoch_checkpoint,
+    next_student_checkpoint_dir,
+    numbered_checkpoint_dir,
+    remove_mid_epoch,
+    resume_checkpoint,
+)
 from init_weights import load_init_model
 from run_meta import chain_fields, cv_train_rows, run_note
 from plot_metrics import write_plots
@@ -434,8 +441,13 @@ def main() -> None:
     log.info("trainable decoder parameters: %d", trainable)
 
     ckpt_dir = numbered_checkpoint_dir(checkpoint_root(), cfg.model_name, cfg.resume)
-    log.info("checkpoint directory %s", ckpt_dir)
     ckpt_path = resume_checkpoint(ckpt_dir, cfg.resume)
+    # The last epoch is already saved: that run is finished, so start the next numbered directory.
+    if ckpt_path is not None and is_final_epoch_checkpoint(ckpt_path, cfg.max_epochs):
+        log.info("%s finished all %d epochs; starting a new run", ckpt_dir, cfg.max_epochs)
+        ckpt_dir = next_student_checkpoint_dir(checkpoint_root(), cfg.model_name)
+        ckpt_path = None
+    log.info("checkpoint directory %s", ckpt_dir)
     train_meta = {
         "model": cfg.model_name,
         "model_id": cfg.model_id,

@@ -18,7 +18,8 @@ paths:
 
 model:
   id: openai/whisper-medium
-  name: model-whisper-uk
+  # Own checkpoint folder: with training.resume the old model-whisper-uk run would be resumed.
+  name: model-whisper-uk-cv-fleurs
   language: uk
 
 # The one GPU of every stage: fine-tune, student, multi_step, evaluation, labelling, language ID.
@@ -69,8 +70,8 @@ data:
   # common_voice, fleurs, and ukr_dialects have train, dev, and test.
   # opentts and tg_voices are train only. cv10_test is test only.
   # Broadcast Speech and YODAS2 stay out: their labels are unreliable.
-  train: [common_voice, fleurs, opentts, tg_voices, ukr_dialects]
-  dev: [common_voice, fleurs, ukr_dialects]
+  train: [common_voice, fleurs]
+  dev: [common_voice, fleurs]
   test: [common_voice, fleurs, ukr_dialects, cv10_test]
 
 pseudo_labelling:
