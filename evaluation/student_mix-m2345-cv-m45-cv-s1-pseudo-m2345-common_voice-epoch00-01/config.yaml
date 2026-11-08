@@ -1,0 +1,137 @@
+# Written by fine-tune/multi_step.py from config.yaml: chain student_mix-m2345+cv-m45+cv, step 1/2 (pseudo-labels (marks 2, 3, 4, 5) + common_voice).
+paths:
+  common_voice: /mnt/data/rberehun/common-voice
+  fleurs: /mnt/data/rberehun/fleurs-uk
+  opentts: /mnt/data/rberehun/opentts-uk
+  tg_voices: /mnt/data/rberehun/tg-voices-uk
+  ukr_dialects: /mnt/data/rberehun/ukr-dialects
+  cv10_test: /mnt/data/rberehun/cv10-uk-testset-clean
+  checkpoints: /mnt/data/rberehun/checkpoints
+  common_voice_splits: datasets/common-voice/raw
+  fine_tune_output: output/fine-tune
+  evaluation: evaluation
+model:
+  id: openai/whisper-medium
+  name: model-whisper-uk
+  language: uk
+gpus:
+  nvidia0: true
+  nvidia1: false
+batch_size:
+  train: 32
+  testing_after_train: 8
+  testing: 64
+training:
+  learning_rate: 1.0e-05
+  warmup_steps: 50
+  max_epochs: 2
+  num_workers: 4
+  precision: bf16-mixed
+  seed: 42
+  gradient_clip: 1.0
+  weight_decay: 0.01
+  resume: true
+  baseline_eval: true
+  limit_train_batches: 1.0
+  limit_val_batches: 1.0
+  checkpoint_every: 0.05
+data:
+  max_audio_seconds: 30.0
+  max_label_tokens: 448
+  train:
+  - common_voice
+  - fleurs
+  - opentts
+  - tg_voices
+  - ukr_dialects
+  dev:
+  - common_voice
+  - fleurs
+  - ukr_dialects
+  test:
+  - common_voice
+  - fleurs
+  - ukr_dialects
+  - cv10_test
+pseudo_labelling:
+  teacher_model: /mnt/data/rberehun/checkpoints/model-whisper-uk/model-whisper-uk-epoch00.ckpt
+  voa: /mnt/data/rberehun/voa-ukr
+  ukrainian_meta: datasets/voa-ukr/ukrainian.csv
+  timestamps: datasets/voa-ukr/ukrainian_30s.csv
+  sample_rate: 16000
+  batch_size: 64
+  language: uk
+  task: transcribe
+  precision: bf16
+  resume: true
+  output_dir: output/pseudo-labelling
+student:
+  name: student_mix-m2345+cv-m45+cv-s1-pseudo-m2345-common_voice
+  base: openai/whisper-medium
+  init: /mnt/data/rberehun/checkpoints/model-whisper-uk/model-whisper-uk-epoch00.ckpt
+  marks: latest
+  labels: latest
+  filter_marks: true
+  accepted_mark:
+  - 2
+  - 3
+  - 4
+  - 5
+  extra_train:
+  - common_voice
+  voa: /mnt/data/rberehun/voa-ukr
+  sample_rate: 16000
+  language: uk
+  eval_data: common_voice
+  gpus:
+    nvidia0: false
+    nvidia1: true
+  batch_size:
+    train: 16
+    eval: 8
+  learning_rate: 1.0e-05
+  warmup_steps: 50
+  max_epochs: 1
+  num_workers: 4
+  precision: bf16-mixed
+  seed: 42
+  gradient_clip: 1.0
+  weight_decay: 0.01
+  resume: true
+  baseline_eval: false
+  limit_train_batches: 1.0
+  limit_val_batches: 1.0
+  limit_test_batches: 1.0
+  checkpoint_every: 0.25
+  val_every: 0.25
+  max_audio_seconds: 30.0
+  max_label_tokens: 448
+voa_prep:
+  whisper_meta: datasets/voa-ukr/voa_ukr_meta.json
+  mms_languages: datasets/voa-ukr/mms-language-confidences.csv
+  other_languages: datasets/voa-ukr/other_languages.csv
+  vad_progress: datasets/voa-ukr/vad-progress
+  language_figures: analysis/voa-meta-plots
+  meta_figures: output/eda
+pipeline:
+  language: skip_if_present
+  timestamps: skip_if_present
+  label: skip_if_present
+  clean: skip
+  student: skip
+  evaluate: skip
+  multi_step: run
+  chunk_processes: 6
+  mms_model: facebook/mms-lid-256
+  mms_batch_size: 16
+  mms_fp16: true
+  judge_workers: 4
+  judge_retries: 3
+  judge_model: ''
+downloads:
+  private_repo: CHANGE_ME/asr-ssl-vast
+  opentts: Yehor/opentts-uk
+  tg_voices: Yehor/tg-voices-uk
+  ukr_dialects: KSE-RESEARCH-Group/ukr-dialects-audio-dataset
+  cv10_test: Yehor/cv10-uk-testset-clean
+  voa: robinhad/VOA-ukr

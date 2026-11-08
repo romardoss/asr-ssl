@@ -1,0 +1,36 @@
+2026-11-07 21:04:22,529 INFO model=/mnt/data/rberehun/checkpoints/student_mix-m2345+cv-m45+cv-s1-pseudo-m2345-common_voice_01/student_mix-m2345+cv-m45+cv-s1-pseudo-m2345-common_voice-epoch00.ckpt kind=ckpt gpus=['nvidia0'] CUDA_VISIBLE_DEVICES=0 testing_batch=64
+2026-11-07 21:04:23,895 INFO test clips: 18345 (common_voice 10956, fleurs 750, ukr_dialects 3435, cv10_test 3204)
+2026-11-07 21:04:24,444 INFO HTTP Request: GET https://huggingface.co/api/models/openai/whisper-medium/revision/main "HTTP/1.1 200 OK"
+2026-11-07 21:04:24,592 INFO HTTP Request: GET https://huggingface.co/api/models/openai/whisper-medium/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-11-07 21:04:24,743 INFO HTTP Request: GET https://huggingface.co/api/models/openai/whisper-medium/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-11-07 21:04:24,887 INFO HTTP Request: GET https://huggingface.co/api/models/openai/whisper-medium/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
+2026-11-07 21:04:25,107 INFO HTTP Request: GET https://huggingface.co/api/models/openai/whisper-medium/revision/main "HTTP/1.1 200 OK"
+2026-11-07 21:04:32,032 INFO cuda:0 batch 1/287
+2026-11-07 21:05:18,840 INFO cuda:0 batch 20/287
+2026-11-07 21:06:07,472 INFO cuda:0 batch 40/287
+2026-11-07 21:06:56,209 INFO cuda:0 batch 60/287
+2026-11-07 21:07:45,117 INFO cuda:0 batch 80/287
+2026-11-07 21:08:34,615 INFO cuda:0 batch 100/287
+2026-11-07 21:09:24,227 INFO cuda:0 batch 120/287
+2026-11-07 21:10:14,428 INFO cuda:0 batch 140/287
+2026-11-07 21:11:04,524 INFO cuda:0 batch 160/287
+2026-11-07 21:12:04,741 INFO cuda:0 batch 180/287
+2026-11-07 21:13:07,060 INFO cuda:0 batch 200/287
+2026-11-07 21:14:24,202 INFO cuda:0 batch 220/287
+2026-11-07 21:17:03,580 INFO cuda:0 batch 240/287
+2026-11-07 21:17:54,621 INFO cuda:0 batch 260/287
+2026-11-07 21:18:45,126 INFO cuda:0 batch 280/287
+2026-11-07 21:19:04,463 INFO loss 0.5182
+2026-11-07 21:19:04,463 INFO test combined_weighted {'wer': 0.30187208453457726, 'cer': 0.13283834494961574, 'mer': 0.2855738223020783, 'wil': 0.4359715894319003, 'wip': 0.5640284105680997, 'substitutions': 32149.0, 'deletions': 7420.0, 'insertions': 9225.0, 'hits': 122069.0, 'n': 18345.0, 'clips': 18345.0}
+2026-11-07 21:19:04,463 INFO test combined_mean {'wer': 0.2746464446345405, 'cer': 0.12966601136547604, 'mer': 0.24887235328412283, 'wil': 0.36637853485325395, 'wip': 0.6336214651467461, 'datasets': 4.0, 'clips': 18345.0}
+2026-11-07 21:19:04,463 INFO test common_voice {'wer': 0.15497231956930266, 'cer': 0.03935318583173076, 'mer': 0.15238344944689988, 'wil': 0.2578410110155225, 'wip': 0.7421589889844775, 'substitutions': 9626.0, 'deletions': 1241.0, 'insertions': 1338.0, 'hits': 67889.0, 'n': 10956.0, 'clips': 10956.0}
+2026-11-07 21:19:04,463 INFO test fleurs {'wer': 0.11613083981228549, 'cer': 0.04045918208191659, 'mer': 0.1146928610957388, 'wil': 0.19886771433367645, 'wip': 0.8011322856663236, 'substitutions': 1343.0, 'deletions': 136.0, 'insertions': 179.0, 'hits': 12798.0, 'n': 750.0, 'clips': 750.0}
+2026-11-07 21:19:04,463 INFO test ukr_dialects {'wer': 0.7000174916914466, 'cer': 0.4102402022756005, 'mer': 0.6027448839354632, 'wil': 0.7945235727908199, 'wip': 0.20547642720918016, 'substitutions': 18897.0, 'deletions': 5738.0, 'insertions': 7381.0, 'hits': 21101.0, 'n': 3435.0, 'clips': 3435.0}
+2026-11-07 21:19:04,463 INFO test cv10_test {'wer': 0.12746512746512748, 'cer': 0.028611475272656273, 'mer': 0.12566821865838937, 'wil': 0.214281841272997, 'wip': 0.785718158727003, 'substitutions': 2283.0, 'deletions': 305.0, 'insertions': 327.0, 'hits': 20281.0, 'n': 3204.0, 'clips': 3204.0}
+2026-11-07 21:19:04,463 INFO wrote /home/rberehun/asr-ssl/evaluation/student_mix-m2345-cv-m45-cv-s1-pseudo-m2345-common_voice-epoch00-01/results.json
+2026-11-07 21:19:04,463 INFO wrote /home/rberehun/asr-ssl/evaluation/student_mix-m2345-cv-m45-cv-s1-pseudo-m2345-common_voice-epoch00-01/predictions.csv
+2026-11-07 21:19:04,463 INFO wrote /home/rberehun/asr-ssl/evaluation/student_mix-m2345-cv-m45-cv-s1-pseudo-m2345-common_voice-epoch00-01/plots/error_rates.png
+2026-11-07 21:19:04,463 INFO wrote /home/rberehun/asr-ssl/evaluation/student_mix-m2345-cv-m45-cv-s1-pseudo-m2345-common_voice-epoch00-01/plots/edit_counts.png
+2026-11-07 21:19:04,463 INFO wrote /home/rberehun/asr-ssl/evaluation/student_mix-m2345-cv-m45-cv-s1-pseudo-m2345-common_voice-epoch00-01/plots/utterance_wer.png
+2026-11-07 21:19:04,463 INFO wrote /home/rberehun/asr-ssl/evaluation/student_mix-m2345-cv-m45-cv-s1-pseudo-m2345-common_voice-epoch00-01/plots/error_rates_by_dataset.png
+2026-11-07 21:19:04,469 INFO updated /home/rberehun/asr-ssl/evaluation/results.csv

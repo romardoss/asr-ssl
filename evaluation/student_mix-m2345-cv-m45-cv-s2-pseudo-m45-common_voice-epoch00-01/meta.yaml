@@ -1,0 +1,27 @@
+stage: student
+chain: student_mix-m2345+cv-m45+cv
+step: 2
+base: openai/whisper-medium
+init: /mnt/data/rberehun/checkpoints/student_mix-m2345+cv-m45+cv-s1-pseudo-m2345-common_voice_01/student_mix-m2345+cv-m45+cv-s1-pseudo-m2345-common_voice-epoch00.ckpt
+train_data:
+- voa_pseudo_labels
+- common_voice
+cv_train_rows: 62460
+filter_marks: true
+accepted_mark:
+- 4
+- 5
+labels: /home/rberehun/asr-ssl/output/pseudo-labelling/model-whisper-uk-epoch00-01/labels.csv
+learning_rate: 1.0e-05
+max_epochs: 1
+precision: bf16-mixed
+seed: 42
+model: student_mix-m2345+cv-m45+cv-s2-pseudo-m45-common_voice
+checkpoint: student_mix-m2345+cv-m45+cv-s2-pseudo-m45-common_voice-epoch00.ckpt
+epoch: 0
+checkpoint_dir: /mnt/data/rberehun/checkpoints/student_mix-m2345+cv-m45+cv-s2-pseudo-m45-common_voice_01
+base_model: openai/whisper-medium
+language: uk
+evaluated_at: '2026-11-08 02:21:29'
+git_commit: b552dc9
+note: 'student_mix-m2345+cv-m45+cv step 2/2: pseudo-labels (marks 4, 5) + common_voice'
