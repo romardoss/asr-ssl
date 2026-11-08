@@ -1,12 +1,14 @@
 """Fine-tune a Whisper decoder on the labelled Ukrainian speech in ``config.yaml``.
 
-The encoder stays frozen. ``data.train`` and ``data.dev`` are concatenated.
-Dev is scored during training. The test sets are not scored here:
+The encoder stays frozen. The datasets in ``data.train`` are concatenated
+into one train split, and those in ``data.dev`` into one dev split, which is
+scored during training. The test sets are not scored here:
 ``evaluation/evaluate_training.py`` scores the first-epoch and the final
 checkpoint with ``evaluate.py`` (``main.py fine-tune`` runs it after
 training), which also writes predictions, plots, and the ``results.csv`` row.
-The starting weights (``model.id``, or ``training.init`` when set), GPUs, batch sizes, and training hyperparameters come
-from the same file.
+The starting weights (``model.id``, or ``training.init`` when set), the GPU,
+batch sizes, and training hyperparameters come from the same file. A finished
+run deletes its mid-epoch checkpoints (``remove_mid_epoch_checkpoints``).
 
 Checkpoints (model, optimizer, and scheduler) are written to
 ``paths.checkpoints/<model-name>_01/``, then ``_02``, and so on. The

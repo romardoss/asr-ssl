@@ -1,12 +1,12 @@
 """Plot VOA-ukr metadata statistics.
 
-Same figures as notebooks/voa_ukr_meta_stats.ipynb. Reads
+Same figures as archive/notebooks/kaggle/voa_ukr_meta_stats.ipynb. Reads
 ``voa_prep.whisper_meta`` and writes plots to ``voa_prep.meta_figures``. A partial
 checkpoint is fine.
 
 Run from the repo root:
 
-    python src/meta_stats.py
+    python scripts/monitor/meta_stats.py
 """
 
 from __future__ import annotations

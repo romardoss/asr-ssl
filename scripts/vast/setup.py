@@ -358,6 +358,19 @@ def dotenv_keys() -> set[str]:
     return keys
 
 
+def dotenv_value(name: str) -> str:
+    path = ROOT / ".env"
+    if not path.is_file():
+        return ""
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            key, value = line.split("=", 1)
+            if key.strip() == name:
+                return value.strip().strip("\"'")
+    return ""
+
+
 def check_secrets(report: Report, loaded: dict) -> None:
     step("Secrets")
     available = {key for key, value in os.environ.items() if value} | dotenv_keys()
@@ -371,6 +384,12 @@ def check_secrets(report: Report, loaded: dict) -> None:
             report.ok("OPENROUTER_API_KEY set")
         else:
             report.warn(f"pipeline.clean is {clean}, but OPENROUTER_API_KEY is not set")
+        switch = os.environ.get("USE_DECISION_INSTEAD_OF_LLM") or dotenv_value("USE_DECISION_INSTEAD_OF_LLM")
+        if (switch or "").strip().lower() in {"1", "true", "yes", "on"}:
+            if "OPENROUTER_DECISION_MODEL" in available:
+                report.ok("USE_DECISION_INSTEAD_OF_LLM: judge uses OPENROUTER_DECISION_MODEL")
+            else:
+                report.warn("USE_DECISION_INSTEAD_OF_LLM is true, but OPENROUTER_DECISION_MODEL is not set")
 
 
 def main() -> None:

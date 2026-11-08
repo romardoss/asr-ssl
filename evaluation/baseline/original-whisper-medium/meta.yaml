@@ -1,2 +1,3 @@
 model: openai/whisper-medium
 evaluated_at: '2026-10-26 22:04:51'
+note: Evaluation оригінального Whisper Medium для порівняння

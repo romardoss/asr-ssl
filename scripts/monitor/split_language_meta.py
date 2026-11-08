@@ -7,7 +7,7 @@ Whisper in ``voa_prep.whisper_meta`` (language == "uk") and MMS in
 
 Run from the repo root:
 
-    python src/split_language_meta.py
+    python scripts/monitor/split_language_meta.py
 """
 
 from __future__ import annotations

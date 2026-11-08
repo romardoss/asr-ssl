@@ -39,6 +39,10 @@ file named by ``ASR_CONFIG`` (for example ``config.vast.yaml``).
     python main.py judge --max-examples 32
         Ask the OpenRouter judge to mark pseudo-label quality and append
         ``label_marks.csv``. ``--max-examples`` limits how many rows are sent.
+        ``--backend decisions`` (or ``USE_DECISION_INSTEAD_OF_LLM=true``) uses the
+        decision model ``OPENROUTER_DECISION_MODEL`` instead of the chat model.
+        ``--test`` marks only 100 random rows (200 if some mark 0-5 never appears)
+        into ``judge_test-<model>-<time>.csv`` for a manual review.
     python main.py plot --watch
         Plot loss and error rates from a fine-tune or student ``metrics.csv``.
         ``--watch`` redraws the plots while that file changes.
@@ -111,6 +115,17 @@ def main() -> None:
     judge.add_argument("--max-examples", type=int, default=None, help="Score only the first N rows.")
     judge.add_argument("--workers", type=int, default=None, help="How many requests may be in flight.")
     judge.add_argument("--retries", type=int, default=None, help="Attempts per batch.")
+    judge.add_argument(
+        "--test",
+        action="store_true",
+        help="Mark 100 random rows (200 if a mark 0-5 is missing) into a review CSV beside the labels.",
+    )
+    judge.add_argument(
+        "--backend",
+        choices=("llm", "decisions"),
+        default=None,
+        help="Chat LLM or decision model. Default: USE_DECISION_INSTEAD_OF_LLM.",
+    )
 
     plot = commands.add_parser("plot", help="Plot fine-tune or student metrics.")
     plot.add_argument(
@@ -142,7 +157,7 @@ def main() -> None:
         "multi-step": ("dry_run",),
         "evaluate": ("model",),
         "label": (),
-        "judge": ("labels", "max_examples", "workers", "retries"),
+        "judge": ("labels", "max_examples", "workers", "retries", "backend", "test"),
         "plot": ("model_name", "version", "watch", "interval"),
         "marks": ("marks",),
     }

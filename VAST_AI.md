@@ -137,9 +137,10 @@ python main.py pipeline --dry-run
 ### 1.6. Секрети та `.env`
 
 1. ✅ У `.env.example` ключ називався `HF-TOKEN`, і `huggingface_hub` його не читав. Тепер він називається `HF_TOKEN`. `download_data.py` для сумісності читає зі старого `.env` обидва варіанти.
-2. `.env` не потрапляє в git, тож на інстансі його немає. Секрети `HF_TOKEN`, `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` краще задавати як Environment Variables у шаблоні vast.ai (вони приватні для акаунта), а не копіювати файл.
+2. `.env` не потрапляє в git, тож на інстансі його немає. Секрети `HF_TOKEN`, `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` (або `USE_DECISION_INSTEAD_OF_LLM` і `OPENROUTER_DECISION_MODEL` для decision-судді) краще задавати як Environment Variables у шаблоні vast.ai (вони приватні для акаунта), а не копіювати файл.
 3. `LD_LIBRARY_PATH` у `.env` — шлях конкретної машини. На vast.ai його треба або прописати в `Dockerfile`, або обчислювати з `site-packages/nvidia/{cudnn,cublas}/lib`. ✅ Це робить `scripts/vast/setup.py` (файл `.vast/env.sh`). Це потрібно лише для `scripts/monitor/meta_collector.py`, тобто етапу `language`.
 4. `pipeline.judge_model` у конфігу порожній. Якщо `pipeline.clean: run`, його треба заповнити.
+5. Замість чат-моделі суддею може бути decision-модель (Decisions API OpenRouter, `decisions.py`): `USE_DECISION_INSTEAD_OF_LLM=true` і `OPENROUTER_DECISION_MODEL` (наприклад, `typesafe/jev-1.14`). Тоді `pipeline.judge_model` не потрібен, ключ той самий `OPENROUTER_API_KEY`. Деталі в [`pseudo-labelling/llm-as-a-judge/README.md`](pseudo-labelling/llm-as-a-judge/README.md).
 
 ---
 
@@ -152,7 +153,8 @@ python main.py pipeline --dry-run
 1. `paths.checkpoints`: чекпоінти fine-tune і student;
 2. `output/fine-tune/<name>/version_*/metrics.csv` і графіки;
 3. `output/pseudo-labelling/...`: `labels.csv`, `label_marks.csv`;
-4. `evaluation/<model>/`: `results.json`, `predictions.csv`, графіки.
+4. `evaluation/<model>/`: `results.json`, `predictions.csv`, `meta.yaml`, графіки, а також спільна таблиця `evaluation/results.csv`;
+5. `output/multi-step/<name>/`: конфіги кроків ланцюжка й знімок конфігу для їхньої оцінки.
 
 Що зробити:
 
@@ -160,7 +162,7 @@ python main.py pipeline --dry-run
    1. після кожного етапу в `pipeline.py` (або обгортці);
    2. періодично через `cron`/цикл, щоб чекпоінти не загубилися, якщо інстанс перервуть.
 2. Альтернатива: vast.ai Cloud Sync або окремий том (volume), якщо він доступний у вибраному регіоні.
-3. Писати лише `last.ckpt` і найкращий чекпоінт або чистити старі. Кожен чекпоінт whisper-medium зі станом оптимізатора займає кілька гігабайтів, а `checkpoint_every: 0.05` дає до 20 файлів на епоху.
+3. ✅ Частково зроблено: `checkpoint_every: 0.25` (один на всі етапи) дає 3 проміжні чекпоінти на епоху, а завершене навчання саме видаляє їх (`remove_mid_epoch_checkpoints: true`) і лишає кінець кожної епохи. Під час навчання проміжні файли все одно займають місце: при `bf16-mixed` чекпоінт зі станом оптимізатора, за грубою оцінкою, важить 6–7 ГБ.
 
 ### 2.2. Розмір диска
 
@@ -169,14 +171,14 @@ python main.py pipeline --dry-run
 1. VOA-ukr: ≈ 128 ГБ;
 2. Common Voice uk + FLEURS + OpenTTS + TG Voices + Ukrainian Dialects + CV10 test: десятки гігабайтів;
 3. кеш HF (whisper-medium, mms-lid-256): ≈ 5 ГБ;
-4. чекпоінти: від кількох до десятків гігабайтів залежно від `checkpoint_every`;
+4. чекпоінти: десятки гігабайтів на запуск під час навчання (див. 2.1, пункт 3), після нього — по одному чекпоінту на епоху;
 5. образ, середовище, тимчасові файли.
 
 Рекомендація: **не менше 300 ГБ**, якщо потрібні всі етапи. Лише для студента й оцінки (VOA + Common Voice + чекпоінт учителя) достатньо ≈ 200 ГБ. Точні розміри наборів варто записати в `datasets/info.yaml` (поле `size_gb`).
 
 ### 2.3. Вибір GPU і batch size
 
-1. `precision: bf16-true` і `torch.autocast(..., dtype=torch.bfloat16)` потребують GPU покоління Ampere або новішої: A100, A6000, RTX 3090/4090, L40S, H100. На V100, T4 і подібних bf16 не буде.
+1. `precision: bf16-mixed` (навчання) і `torch.autocast(..., dtype=torch.bfloat16)` (оцінка, псевдомітки) потребують GPU покоління Ampere або новішої: A100, A6000, RTX 3090/4090, L40S, H100. На V100, T4 і подібних bf16 не буде.
 2. Batch size у `config.yaml` (`train: 32`, `testing: 64`, `pseudo_labelling.batch_size: 64`) підібрані під серверну карту. З коментарів: `testing: 64` займає ≈ 16 ГБ, `96` дає OOM. Для 24-гігабайтних карт `batch_size.train` і `student.batch_size.train` треба зменшити й перевірити на короткому запуску (`limit_train_batches: 20`).
 3. У `config.vast.yaml` варто мати окремі профілі або коментарі з batch size для типових карт (24 ГБ, 48 ГБ, 80 ГБ).
 
@@ -213,7 +215,7 @@ python main.py pipeline --dry-run
    Це дешевше, ніж дізнатися про помилку через годину оплаченого часу.
 3. **Етап `language` не запускати на vast.ai без потреби.** Його результати (`datasets/voa-ukr/ukrainian.csv`, `ukrainian_30s.csv`, `voa_ukr_meta.json`) уже є в git. У `config.vast.yaml` поставити `pipeline.language: skip` і `pipeline.timestamps: skip`, щоб не витрачати GPU-години й не налаштовувати `ctranslate2`/cuDNN.
 4. **Записувати в `run.json` і `meta.yaml` інформацію про хост:** модель GPU, ID інстансу vast.ai, версії `torch`/`transformers`. Так результати з різних машин можна буде порівнювати.
-5. **Перед дорогим запуском виправити критичні пункти з `REVIEW_FINDINGS.md`**, насамперед перетин dev/test з train у Common Voice і `bf16-true` при `lr=1e-5`. Інакше орендовані GPU-години підуть на навчання з некоректними метриками.
+5. **Перед дорогим запуском виправити критичні пункти з `REVIEW_FINDINGS.md`.** ✅ Кліпи dev прибрано з train Common Voice, а навчання переведено з `bf16-true` на `bf16-mixed` (2026-11-07). Решту відкритих пунктів див. у `todo.md`.
 
 ---
 

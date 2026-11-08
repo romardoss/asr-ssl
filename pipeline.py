@@ -5,6 +5,9 @@ The config is ``config.yaml``, or the file ``ASR_CONFIG`` names.
 Language filtering and 30-second splits are skipped when their files are
 already present and the stage is ``skip_if_present``. The same switch covers
 pseudo-labelling (``labels.csv`` in the newest run) and the judge (``label_marks.csv``).
+The judge is the chat model ``pipeline.judge_model``, or, with
+``USE_DECISION_INSTEAD_OF_LLM=true``, the decision model ``OPENROUTER_DECISION_MODEL``
+(``decisions.py``).
 Student tuning, evaluation, and the multi-step chain are ``run`` or ``skip``. Evaluation scores the
 student's first-epoch checkpoint and its final one, and adds both to
 ``<paths.evaluation>/results.csv``. ``multi_step`` runs the chain in the
@@ -27,6 +30,7 @@ from pathlib import Path
 
 import yaml
 
+import decisions
 from project_config import CONFIG_PATH, repo_path
 
 ROOT = Path(__file__).resolve().parent
@@ -310,16 +314,24 @@ def main() -> None:
     marks_ready = marks is not None and present(marks)
 
     if should_run(cfg.clean, marks_ready):
-        if not cfg.judge_model:
+        backend = decisions.configured_backend()
+        if backend == "decisions" and not decisions.model_for("decisions"):
+            raise SystemExit(
+                f"{decisions.SWITCH_ENV} is true, but {decisions.MODEL_ENV} is empty. Set it before running the judge."
+            )
+        if backend == "llm" and not cfg.judge_model:
             raise SystemExit("pipeline.judge_model is empty. Set it before running the judge.")
         note("clean", "run", str(marks) if marks is not None else "label_marks.csv beside the new labels")
         if labels_ready and marks is not None:
             judge_env = dict(env)
-            judge_env["OPENROUTER_MODEL"] = cfg.judge_model
+            if backend == "llm":
+                judge_env[decisions.LLM_MODEL_ENV] = cfg.judge_model
             execute(
                 [
                     py,
                     str(ROOT / "pseudo-labelling" / "llm-as-a-judge" / "judge.py"),
+                    "--backend",
+                    backend,
                     "--labels",
                     str(labels),
                     "--workers",

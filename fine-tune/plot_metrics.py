@@ -7,7 +7,7 @@ metrics file; it does not start or modify training.
 
     python fine-tune/plot_metrics.py --version 2
     python fine-tune/plot_metrics.py --version 3 --watch
-    python fine-tune/plot_metrics.py --model-name student_model-whisper-uk --watch
+    python fine-tune/plot_metrics.py --model-name student_whisper-commonvoice-based --watch
 """
 
 from __future__ import annotations

@@ -64,7 +64,8 @@ training:
 data:
   max_audio_seconds: 30.0
   max_label_tokens: 448
-  # train and dev are concatenated. Test is scored once per dataset and once combined.
+  # The train sets are concatenated into one train split, the dev sets into one dev split.
+  # evaluate.py scores each test set alone, plus combined_weighted and combined_mean.
   # common_voice, fleurs, and ukr_dialects have train, dev, and test.
   # opentts and tg_voices are train only. cv10_test is test only.
   # Broadcast Speech and YODAS2 stay out: their labels are unreliable.
@@ -197,7 +198,8 @@ pipeline:
   mms_fp16: true
   judge_workers: 4
   judge_retries: 3
-  # OpenRouter model. The API key stays in .env. Empty is allowed only when clean does not run.
+  # OpenRouter chat model. The API key stays in .env. Empty is allowed only when clean does not run,
+  # or when USE_DECISION_INSTEAD_OF_LLM=true: the judge then uses OPENROUTER_DECISION_MODEL (decisions.py).
   judge_model: ""
 
 # scripts/vast/download_data.py: Hugging Face dataset repos for the local paths above.

@@ -1,6 +1,6 @@
 # Аудит репозиторію asr_ssl: помилки, неточності, вразливості
 
-Дата: 2026-11-03. Це список знахідок. Код змінено лише в одному місці: `fine-tune/settings.py` і `pseudo-labelling/settings.py` тепер вимагають рівно одну GPU. Помилки, які виникали лише при двох GPU, через це прибрано зі списку.
+Дата: 2026-11-03. Статуси виправлень дописано біля пунктів (останнє оновлення 2026-11-08); пункти без статусу ще відкриті. Це список знахідок. Код змінено лише в одному місці: `fine-tune/settings.py` і `pseudo-labelling/settings.py` тепер вимагають рівно одну GPU. Помилки, які виникали лише при двох GPU, через це прибрано зі списку.
 
 Пункти 1–2, 3, 7 і 8 перевірено на даних, що є в репозиторії: TSV Common Voice, `ukrainian_30s.csv`, `label_marks.csv`, `evaluation/.../config.yaml`. Решту знайдено читанням коду.
 
@@ -27,7 +27,7 @@
      2. Додати перевірку на перетин дикторів і речень у тому самому місці, що й у пункті 1.
      3. Якщо train змінювати не можна, окремо звітувати WER на підмножині test без перетинів, щоб мати чесне число.
      4. Переоцінити базові моделі в `evaluation/baseline/`, бо порівняння з ними теж зсунуте.
-   - **Статус: виправлено в даних.** `datasets/leak-clean/clean_common_voice_train.py` прибрав з train усі речення й дикторів, що є в dev і test. Train зменшився з 73 415 до 38 849 рядків, а дикторів лишилося 74 з 435. 129 рядків train збігаються з dev або test лише після нормалізації (регістр, пунктуація), їх не прибирали. Моделі ще не перенавчені.
+   - **Статус (2026-11-08): обрано варіант 3.** Спільні речення й диктори свідомо лишено в train (62 460 рядків), бо інакше train зменшився б майже вдвічі. Чесне число дає `test_cleaned.tsv` (`datasets/leak-clean/score_common_voice_cleaned.py`): для моделей у `bf16-mixed` витік завищує WER приблизно на 0.6–0.85 п.п. Деталі — у `datasets/common-voice/README.md`.
 
 3. **Чекпоінти зберігаються не на тих відсотках епохи.**
    - Де: `fine-tune/checkpoints.py:176`, `range(5, 101, int(self.fraction * 100))`
@@ -39,7 +39,7 @@
    - **Як вирішити:**
      1. У `on_train_epoch_start` рахувати крок як `step = round(self.fraction * 100)` і перебирати `range(step, 100, step)`. Верхня межа 100 не входить, бо кінець епохи вже зберігає `on_train_epoch_end`.
      2. У `fine-tune/settings.py` (`_fraction`) перевіряти, що `checkpoint_every * 100` є цілим числом не менше 1, тобто значення кратне 0,01. Інакше зупиняти запуск з помилкою.
-   - **Статус: виправлено 2026-11-07.** `range(step, 100, step)`, значення кратне 0,01 перевіряється. `checkpoint_every` тепер один, на верхньому рівні конфігу (0.25), а `multi_step` видаляє проміжні чекпоінти кроку після його оцінки.
+   - **Статус: виправлено 2026-11-07.** `range(step, 100, step)`, значення кратне 0,01 перевіряється. `checkpoint_every` тепер один, на верхньому рівні конфігу (0.25), а кожне завершене навчання видаляє свої проміжні чекпоінти (`remove_mid_epoch_checkpoints`).
 
 4. **`precision: bf16-true` при `learning_rate: 1e-5`.**
    - Де: `config.yaml:35` (training), `config.yaml:96` (student)
@@ -49,6 +49,7 @@
      2. Пам'яті стане потрібно більше, бо decoder і optimizer зберігатимуться у fp32. Можливо, доведеться зменшити `batch_size.train`. Перевірити на короткому запуску з `limit_train_batches`.
      3. За бажання додати в `settings.py` попередження або помилку для `*-true` під час навчання.
      4. Чекпоінти, навчені в `bf16-true`, варто порівняти з новим запуском: їхня якість, імовірно, занижена.
+   - **Статус: виправлено 2026-11-07 в конфігах (`bf16-mixed` для `training` і `student`). Старі моделі ще треба перенавчити (`todo.md`, пункт 1).**
 
 ---
 
@@ -68,6 +69,7 @@
    - Де: `config.yaml:81`
    - Суть: при `filter_marks: true` приймаються всі оцінки. У навчання йдуть 4 771 мітка з оцінкою 0 і 4 996 з оцінкою 1, а відкидаються лише рядки без оцінки.
    - Попередній експеримент `evaluation/student_whisper-commonvoice-based-mark5-epoch01-01/config.yaml` використовував `[5]`. Варто перевірити, чи це навмисно.
+   - **Статус: навмисно. Це були ablation-запуски за оцінками (усі, 3, 5); тепер оцінки задаються кроками `multi_step`.**
 
 8. **Дуже короткі VAD-сегменти.**
    - Де: `pseudo-labelling/vad-chunking/chunk.py:89-98` (`chunk_spans`)
@@ -106,6 +108,7 @@
     - Суть:
       1. Labelling і evaluate беруть верхній `gpus`, а не `student.gpus`. **Виправлено 2026-11-07:** `student.gpus` прибрано, усі етапи беруть верхній `gpus`.
       2. `evaluate.py` при оцінці student-чекпоінта бере базу з `model.id`, а не зі `student.base`. Зараз це однакові значення, але якщо їх розвести, ваги не завантажаться.
+   - **Статус: 1 виправлено 2026-11-07 (`student.gpus` прибрано, усі етапи беруть верхній `gpus`); 2 відкрито.**
 
 ---
 
@@ -135,6 +138,7 @@
 18. **Неправильна назва змінної середовища.**
     - Де: `.env.example:1`, `HF-TOKEN=`
     - Суть: бібліотеки Hugging Face читають `HF_TOKEN`. Дефіс у назві до того ж неприйнятний для shell. Токен ніколи не використовується.
+   - **Статус: виправлено (`HF_TOKEN`).**
 
 19. **Залежності.**
     - Де: `requirements.txt`
@@ -143,6 +147,7 @@
       2. Коментар у `scripts/monitor/meta_collector.py:194` каже, що `to_ndarray` у PyAV несумісний з NumPy 2, хоча навчальні скрипти використовують саме його, а закріплено `numpy==2.5.3`. Варто закріпити сумісну версію `av`.
       3. `torch`, `transformers`, `lightning`, `jiwer` і `silero-vad` не закріплені. `torch.autograd.graph.set_warn_on_accumulate_grad_stream_mismatch` (`fine-tune/fine-tune.py:393`, `fine-tune/fine-tune-student.py:575`) є лише в нових версіях torch і дасть `AttributeError` на старих.
       4. Системна залежність `ffmpeg`/`ffprobe` ніде не задокументована.
+   - **Статус: частково. `av` додано, `ffmpeg` описано у `VAST_AI.md`; версії `torch`, `transformers`, `lightning`, `jiwer`, `av` досі не закріплені.**
 
 20. **Відновлення з чекпоінта посеред епохи.**
     - Де: `fine-tune/checkpoints.py` у поєднанні з `trainer.fit(ckpt_path=...)`
@@ -202,14 +207,17 @@
     2. `scripts/monitor/meta_collector.py:5` пише «first 300 seconds», а `LANGUAGE_SECONDS = 120`.
     3. Docstring-и в `scripts/monitor/*.py` посилаються на неіснуючу теку `src/` і на `notebooks/` (насправді `archive/notebooks/`).
     4. `fine-tune/plot_metrics.py` у прикладах і довідці згадує `student_model-whisper-uk`, а в конфігу student називається `student_whisper-commonvoice-based`.
+   - **Статус: виправлено 2026-11-08 (docstring-и `fine-tune.py`, `scripts/monitor/*.py`, `plot_metrics.py` і коментар у `config.yaml`).**
 
 29. **Шляхи за замовчуванням прописані в коді, а не взяті з конфігу.**
     - Де: `pseudo-labelling/llm-as-a-judge/judge.py:26`, `pseudo-labelling/llm-as-a-judge/plot_marks.py` (`DEFAULT_MARKS`), `pseudo-labelling/vad-chunking/chunk.py` і `scripts/monitor/voa_dataset.py` (`/mnt/data/rberehun/voa-ukr`)
     - Суть: `python main.py judge` без `--labels` бере фіксований `model-whisper-uk-epoch00-01/labels.csv`, а не `student.labels: latest`. Модель судді (`pipeline.judge_model`) береться з конфігу лише в `pipeline.py`, а `main.py judge` читає її тільки з `.env`.
+   - **Статус: частково. `judge.py` і `plot_marks.py` беруть найновіший файл з конфігу, у `chunk.py` немає `/mnt/...`; `main.py judge` бере модель лише з `.env`, а не з `pipeline.judge_model`.**
 
 30. **Чекпоінти займають багато місця.**
     - Де: `fine-tune/checkpoints.py` (`BatchFractionCheckpoint`)
     - Суть: при `checkpoint_every: 0.05` повний чекпоінт із станом optimizer пишеться близько 20 разів за епоху, без ротації старих. Симлінк `last.ckpt` оновлюється неатомарно: спершу `unlink`, потім `symlink_to`.
+   - **Статус: частково 2026-11-07. `checkpoint_every: 0.25` і автоматичне видалення проміжних чекпоінтів після навчання; `last.ckpt` досі оновлюється неатомарно.**
 
 31. **Обмеження в settings.**
     - Де: `fine-tune/settings.py`

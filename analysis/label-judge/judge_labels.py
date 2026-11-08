@@ -1,9 +1,14 @@
-"""Mark the original labels of the labelled datasets with the LLM judge and report per dataset/split.
+"""Mark the original labels of the labelled datasets with the judge and report per dataset/split.
 
-The judging is the one of ``pseudo-labelling/llm-as-a-judge/judge.py``: same
-OpenRouter endpoint, ``prompt.txt``, 0-5 marks, batch size, retries, and
-``OPENROUTER_API_KEY`` from the environment or ``.env``. The judge model is
-``--model``, else ``OPENROUTER_MODEL``, else ``pipeline.judge_model``.
+The judging is the ``Judge`` of ``pseudo-labelling/llm-as-a-judge/judge.py``:
+same ``prompt.txt``, 0-5 marks, retries, and ``OPENROUTER_API_KEY`` from the
+environment or ``.env``. Two backends (see ``decisions.py``):
+
+1. ``llm``: a chat model, ``--model``, else ``OPENROUTER_MODEL``, else ``pipeline.judge_model``;
+2. ``decisions``: a decision model, ``--model``, else ``OPENROUTER_DECISION_MODEL``.
+   ``marks.csv`` then also holds the probability-weighted ``score`` and ``confidence``.
+
+``USE_DECISION_INSTEAD_OF_LLM`` picks the backend; ``--backend`` overrides it.
 
 Every split of every dataset in ``fine-tune/dataset_roles.py`` that exists on
 disk is marked in full. ``--per-split N`` marks a random sample of N
@@ -14,7 +19,7 @@ Each run gets its own folder, so another judge never overwrites a report:
 
     analysis/label-judge/<model>-NN/
         sample.csv                  the transcripts sent to the judge
-        marks.csv                   index,mark (appended as batches finish)
+        marks.csv                   index,ID,mark[,score,confidence] (appended as batches finish)
         report-<model>.md           tables, plots, lowest-marked examples
         plots/*.png
 
@@ -24,6 +29,7 @@ rebuilds the report from the saved marks without calling the judge.
     python analysis/label-judge/judge_labels.py
     python analysis/label-judge/judge_labels.py --per-split 500
     python analysis/label-judge/judge_labels.py --model google/gemini-2.5-pro --datasets ukr_dialects fleurs
+    python analysis/label-judge/judge_labels.py --backend decisions --workers 16
     python analysis/label-judge/judge_labels.py --resume analysis/label-judge/openai_gpt-4.1-01
     python analysis/label-judge/judge_labels.py --report-only analysis/label-judge/openai_gpt-4.1-01
 """
@@ -36,12 +42,10 @@ import hashlib
 import importlib.util
 import json
 import math
-import os
 import random
 import re
 import sys
 from collections import Counter, defaultdict
-from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from datetime import datetime
 from pathlib import Path
 
@@ -58,6 +62,7 @@ for path in (ROOT, FINE_TUNE):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
+import decisions  # noqa: E402
 from dataset_roles import ROLES  # noqa: E402
 from project_config import config_int, load_config  # noqa: E402
 
@@ -71,7 +76,7 @@ def _load_judge():
     return module
 
 
-judge = _load_judge()
+judge_module = _load_judge()
 CONFIG = load_config()
 SPLITS = ("train", "dev", "test")
 MARKS = tuple(range(6))
@@ -96,6 +101,12 @@ plt.rcParams.update(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument(
+        "--backend",
+        choices=decisions.BACKENDS,
+        default=None,
+        help="llm or decisions. Default: decisions when USE_DECISION_INSTEAD_OF_LLM is true, else llm.",
+    )
     parser.add_argument("--model", default=None, help="OpenRouter model id of the judge.")
     parser.add_argument("--datasets", nargs="+", default=list(ROLES), choices=list(ROLES))
     parser.add_argument("--splits", nargs="+", default=list(SPLITS), choices=SPLITS)
@@ -114,11 +125,11 @@ def parse_args() -> argparse.Namespace:
     return args
 
 
-def judge_model(cli: str | None) -> str:
+def judge_model(backend: str, cli: str | None) -> str:
     if cli:
         return cli.strip()
-    env = os.environ.get("OPENROUTER_MODEL", "").strip()
-    if env:
+    env = decisions.model_for(backend)
+    if env or backend == "decisions":
         return env
     configured = (CONFIG.get("pipeline") or {}).get("judge_model") or ""
     return str(configured).strip()
@@ -191,59 +202,10 @@ def read_csv(path: Path) -> list[dict]:
 # ---------------------------------------------------------------- judging
 
 
-def run_judge(run_dir: Path, rows: list[dict], model: str, workers: int, retries: int) -> None:
-    judge.load_dotenv()
-    api_key = os.environ.get("OPENROUTER_API_KEY", "").strip()
-    if not api_key:
-        raise SystemExit("OPENROUTER_API_KEY is empty.")
-    prompt = judge.PROMPT_PATH.read_text(encoding="utf-8").strip()
-    marks_path = run_dir / "marks.csv"
-    done = judge.finished_indexes(marks_path)
-    pending = [(int(row["index"]), row["ID"], row["text"]) for row in rows if int(row["index"]) not in done]
-    print(f"rows {len(rows)} already_marked {len(rows) - len(pending)} pending {len(pending)} -> {marks_path}", flush=True)
-    if not pending:
-        return
-
-    from tqdm import tqdm
-
-    size = judge.BATCH_SIZE
-    batches = [pending[start : start + size] for start in range(0, len(pending), size)]
-    attempts: dict[tuple[int, ...], int] = {}
-    failed: list[int] = []
-    progress = tqdm(total=len(pending), desc="marks", unit="label", file=sys.stderr)
-
-    def key_of(batch):
-        return tuple(index for index, _id, _text in batch)
-
-    with ThreadPoolExecutor(max_workers=workers) as executor:
-        inflight = {}
-
-        def submit_more():
-            while batches and len(inflight) < workers:
-                batch = batches.pop(0)
-                future = executor.submit(judge.judge_batch, batch, api_key, model, prompt, attempts.get(key_of(batch), 0))
-                inflight[future] = batch
-
-        submit_more()
-        while inflight:
-            finished, _ = wait(inflight, return_when=FIRST_COMPLETED)
-            for future in finished:
-                batch = inflight.pop(future)
-                key = key_of(batch)
-                marks = future.result()
-                if marks is None:
-                    attempts[key] = attempts.get(key, 0) + 1
-                    if attempts[key] < retries:
-                        batches.append(batch)
-                    else:
-                        failed.extend(key)
-                        progress.update(len(batch))
-                else:
-                    by_id = {index: label_id for index, label_id, _text in batch}
-                    judge.append_marks(marks_path, [(i, by_id[i], mark) for i, mark in sorted(marks.items())])
-                    progress.update(len(marks))
-            submit_more()
-    progress.close()
+def run_judge(run_dir: Path, rows: list[dict], backend: str, model: str, workers: int, retries: int) -> None:
+    judge = judge_module.Judge(backend, model)
+    items = [(int(row["index"]), row["ID"], row["text"]) for row in rows]
+    failed = judge.mark_rows(items, run_dir / "marks.csv", workers, retries)
     if failed:
         print(f"{len(failed)} transcripts left unmarked; rerun with --resume {run_dir}", file=sys.stderr, flush=True)
 
@@ -251,15 +213,21 @@ def run_judge(run_dir: Path, rows: list[dict], model: str, workers: int, retries
 # ---------------------------------------------------------------- report
 
 
-def group_marks(run_dir: Path) -> tuple[dict[str, list[int]], dict[str, list[tuple[int, str]]], list[str]]:
+def group_marks(run_dir: Path) -> tuple[dict, dict, list[str], dict]:
     sample = read_csv(run_dir / "sample.csv")
     marks: dict[int, int] = {}
+    extras: dict[int, tuple[float, float]] = {}
     marks_path = run_dir / "marks.csv"
     if marks_path.is_file():
-        for row in read_csv(marks_path):
+        for row in judge_module.valid_mark_rows(marks_path):
             marks[int(row["index"])] = int(row["mark"])
+            try:
+                extras[int(row["index"])] = (float(row["score"]), float(row["confidence"]))
+            except (KeyError, TypeError, ValueError):
+                pass
     order: list[str] = []
     by_group: dict[str, list[int]] = defaultdict(list)
+    decided: dict[str, list[tuple[float, float]]] = defaultdict(list)
     examples: dict[str, list[tuple[int, str]]] = defaultdict(list)
     for row in sample:
         group = f"{row['dataset']}/{row['split']}"
@@ -269,7 +237,9 @@ def group_marks(run_dir: Path) -> tuple[dict[str, list[int]], dict[str, list[tup
         if mark is not None:
             by_group[group].append(mark)
             examples[group].append((mark, row["text"]))
-    return by_group, examples, order
+        if int(row["index"]) in extras:
+            decided[group].append(extras[int(row["index"])])
+    return by_group, examples, order, decided
 
 
 def summary(values: list[int]) -> dict:
@@ -347,7 +317,7 @@ def plot_bad_share(groups: list[str], stats: dict, model: str, path: Path) -> No
 def write_report(run_dir: Path) -> Path:
     info = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
     model, slug = info["model"], model_slug(info["model"])
-    by_group, examples, order = group_marks(run_dir)
+    by_group, examples, order, decided = group_marks(run_dir)
     groups = [g for g in order if by_group.get(g)]
     if not groups:
         raise SystemExit(f"No marks in {run_dir} yet.")
@@ -362,7 +332,7 @@ def write_report(run_dir: Path) -> Path:
     lines = [
         f"# Judge marks of original labels — {model}",
         "",
-        f"- judge model: `{model}`",
+        f"- judge model: `{model}` (backend `{info.get('backend', 'llm')}`)",
         f"- started: {info['started']}, report: {datetime.now().isoformat(timespec='seconds')}",
         f"- prompt: `pseudo-labelling/llm-as-a-judge/prompt.txt` (sha256 `{info['prompt_sha256'][:12]}`)",
         f"- sample: " + (f"up to {info['per_split']} transcripts per dataset/split, seed {info['seed']}" if info["per_split"] else "all transcripts"),
@@ -370,16 +340,26 @@ def write_report(run_dir: Path) -> Path:
         "",
         "Marks: 0 nonsense · 1 mostly broken · 2 many errors · 3 several errors · 4 minor errors · 5 sound label.",
         "",
+        *(["Decision backend: the mark is the most probable level; *score* is the probability-weighted level "
+           "(0-5) and *confidence* is how concentrated the probabilities are.", ""] if decided else []),
         "## Summary",
         "",
-        "| dataset/split | population | marked | mean ± 95% CI | " + " | ".join(f"% {m}" for m in MARKS) + " | % 4-5 | % 0-2 |",
-        "|---|---:|---:|---:|" + "---:|" * (len(MARKS) + 2),
+        "| dataset/split | population | marked | mean ± 95% CI | " + " | ".join(f"% {m}" for m in MARKS) + " | % 4-5 | % 0-2 |"
+        + (" mean score | mean confidence |" if decided else ""),
+        "|---|---:|---:|---:|" + "---:|" * (len(MARKS) + 2 + (2 if decided else 0)),
     ]
     for g in groups:
         s = stats[g]
         shares = " | ".join(f"{share * 100:.1f}" for share in s["shares"])
         population = info["population"].get(g, "")
-        lines.append(f"| {g} | {population} | {s['n']} | {s['mean']:.2f} ± {s['ci']:.2f} | {shares} | {s['good'] * 100:.1f} | {s['bad'] * 100:.1f} |")
+        row = f"| {g} | {population} | {s['n']} | {s['mean']:.2f} ± {s['ci']:.2f} | {shares} | {s['good'] * 100:.1f} | {s['bad'] * 100:.1f} |"
+        if decided:
+            pairs = decided.get(g) or []
+            if pairs:
+                row += f" {sum(p[0] for p in pairs) / len(pairs):.2f} | {sum(p[1] for p in pairs) / len(pairs):.2f} |"
+            else:
+                row += " | |"
+        lines.append(row)
     lines += [
         "",
         "## Plots",
@@ -413,15 +393,18 @@ def main() -> None:
         print(f"wrote {write_report(args.report_only)}")
         return
 
-    judge.load_dotenv()
     if args.resume:
         run_dir = args.resume
         info = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
-        model = info["model"]
+        backend, model = info.get("backend", "llm"), info["model"]
     else:
-        model = judge_model(args.model)
+        backend = args.backend or decisions.configured_backend()
+        model = judge_model(backend, args.model)
         if not model:
-            raise SystemExit("No judge model: pass --model or set OPENROUTER_MODEL / pipeline.judge_model.")
+            source = decisions.MODEL_ENV if backend == "decisions" else f"{decisions.LLM_MODEL_ENV} / pipeline.judge_model"
+            raise SystemExit(f"No {backend} judge model: pass --model or set {source}.")
+        # Fail on a missing key or prompt before reading every dataset.
+        judge_module.Judge(backend, model)
         rows, population = build_sample(args.datasets, args.splits, args.per_split, args.seed)
         if not rows:
             raise SystemExit("No transcripts found for the selected datasets/splits.")
@@ -430,18 +413,19 @@ def main() -> None:
         write_csv(run_dir / "sample.csv", SAMPLE_FIELDS, rows)
         info = {
             "model": model,
+            "backend": backend,
             "started": datetime.now().isoformat(timespec="seconds"),
             "datasets": args.datasets,
             "splits": args.splits,
             "per_split": args.per_split,
             "seed": args.seed,
             "population": population,
-            "prompt_sha256": hashlib.sha256(judge.PROMPT_PATH.read_bytes()).hexdigest(),
+            "prompt_sha256": hashlib.sha256(judge_module.PROMPT_PATH.read_bytes()).hexdigest(),
         }
         (run_dir / "run.json").write_text(json.dumps(info, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         print(f"run folder {run_dir}", flush=True)
 
-    run_judge(run_dir, read_csv(run_dir / "sample.csv"), model, args.workers, args.retries)
+    run_judge(run_dir, read_csv(run_dir / "sample.csv"), backend, model, args.workers, args.retries)
     print(f"wrote {write_report(run_dir)}")
 
 

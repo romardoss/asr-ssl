@@ -1,9 +1,9 @@
 """Collect VOA-ukr clip metadata into ``voa_prep.whisper_meta`` from the project config.
 
-Same work as notebooks/voa_ukr_meta_collector.ipynb: for each train clip, store
+Same work as archive/notebooks/kaggle/voa_ukr_meta_collector.ipynb: for each train clip, store
 container metadata, the original transcription, a Whisper medium transcript, and
-the language Whisper detected. Whisper only hears the first 300 seconds.
-Clips come from the local snapshot via src/voa_dataset.py.
+the language Whisper detected. Whisper only hears the first LANGUAGE_SECONDS (120 s).
+Clips come from the local snapshot via scripts/monitor/voa_dataset.py.
 
 The JSON file is both the checkpoint and the output. Paths that already
 succeeded are skipped. A record with ``error`` is retried and replaced. The
@@ -11,7 +11,7 @@ file is rewritten after every clip.
 
 Run from the repo root:
 
-    python src/meta_collector.py
+    python scripts/monitor/meta_collector.py
 """
 
 from __future__ import annotations

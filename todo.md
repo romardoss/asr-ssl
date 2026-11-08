@@ -3,7 +3,8 @@
 Контекст: `train_validated.tsv` тепер містить усі валідовані записи Common Voice, крім кліпів dev і test (62 460 рядків). Спільні з dev і test речення й диктори лишено свідомо. Див. `datasets/common-voice/README.md`.
 
 1. [ ] **Перенавчити й переоцінити моделі.** Усі наявні моделі вчилися на train, що містив кліпи dev, і в `precision: bf16-true`, де при `lr 1e-5` змінюється лише близько 10 % ваг декодера. Тепер у конфігах `bf16-mixed`. Старі результати з новими не порівнювати й незавершені `bf16-true` запуски не продовжувати.
-   1. Тест пам'яті `bf16-mixed` (ваги й AdamW у fp32, приблизно на 2–3 ГБ більше). Тимчасово поставити `training.limit_train_batches: 50` і `limit_val_batches: 5` та запустити `env/bin/python fine-tune/fine-tune.py` напряму: `main.py fine-tune` після навчання запустив би повну оцінку на test. Слідкувати за `nvidia-smi`. Якщо не вміщується, зменшити `batch_size.train`. Потім повернути ліміти до `1.0` і видалити тестову теку `<checkpoints>/model-whisper-uk_NN`.
+   Стан на 2026-11-08: ланцюжок `student_mix-m2345+cv-m45+cv` уже прогнано в `bf16-mixed` на новому train (WER Common Voice 14.6, `results.csv`). Він стартував зі старого вчителя `model-whisper-uk-epoch00` (`bf16-true`, старий train), тож перенавчити вчителя ще треба.
+   1. Тест пам'яті `bf16-mixed` (ваги й AdamW у fp32, приблизно на 2–3 ГБ більше). Ймовірно, вже не потрібен: ланцюжок пройшов у `bf16-mixed` з тим самим `batch_size.train: 32`. Якщо все ж перевіряти: тимчасово поставити `training.limit_train_batches: 50` і `limit_val_batches: 5` та запустити `env/bin/python fine-tune/fine-tune.py` напряму: `main.py fine-tune` після навчання запустив би повну оцінку на test. Слідкувати за `nvidia-smi`. Якщо не вміщується, зменшити `batch_size.train`. Потім повернути ліміти до `1.0` і видалити тестову теку `<checkpoints>/model-whisper-uk_NN`.
    2. `python main.py fine-tune --note "..."` на новому train. Кроків за епоху стане менше, тож зміниться й розклад LR.
    3. Якщо вчитель змінився, перезібрати псевдомітки й оновити `multi_step.init`. Ланцюжок (`python main.py multi-step`) і ablation за оцінками теж перезапустити.
    4. Переоцінити `evaluation/baseline/`, перебудувати `model_comparison.png` (`evaluation/batch-compare.py`) і повторно прогнати `datasets/leak-clean/score_common_voice_cleaned.py`.
@@ -17,7 +18,7 @@
    | Запуск | Чекпоінти зараз → нова назва | Оцінка зараз → нова назва |
    |---|---|---|
    | усі оцінки `[0..5]` | `checkpoints/student_whisper-commonvoice-based_01` → `…-allmarks_01` | `evaluation/student_whisper-commonvoice-based-epoch01-01` → `…-allmarks-epoch01-01` |
-   | лише 3 (`_02`, звірити: `grep accepted_mark …_0*/config.yaml`) | `…_02` → `…-mark3_01` | на сервері `…-epoch01-02` → `…-mark3-epoch01-01` |
+   | лише 3 (`_02`, підтверджено `config.yaml` оцінки: `accepted_mark: [3]`) | `…_02` → `…-mark3_01` | `evaluation/student_whisper-commonvoice-based-epoch01-02` → `…-mark3-epoch01-01` |
    | лише 5 | `…based` (без номера) → `…-mark5_01` | вже `…-mark5-epoch01-01` |
 
    Команди для сервера, з кореня репозиторію, після `git pull`:
@@ -72,6 +73,9 @@
 5. [ ] **Відкриті пункти аудиту `REVIEW_FINDINGS.md` (2026-11-03).**
    1. Пункт 3 виправлено: один глобальний `checkpoint_every: 0.25` зберігає на 25, 50 і 75 %.
    2. Пункт 4 (`bf16-true`) виправлено в конфігах (`bf16-mixed`), лишилося перенавчити (пункт 1).
-   3. Пункти 5–32 звірити з кодом і позначити виправлені.
+   3. Пункт 14.1 (`student.gpus`) виправлено: GPU задається лише у верхній секції `gpus`.
+   4. Пункт 28 (застарілі docstring-и) виправлено 2026-11-08.
+   5. Пункт 30 (місце під чекпоінти) частково: `checkpoint_every: 0.25` і автоматичне прибирання проміжних чекпоінтів; неатомарний `last.ckpt` лишився.
+   6. Решту пунктів (5–27, 29, 31, 32) звірити з кодом і позначити виправлені. Перелік стану на 2026-11-07 був у чаті: більшість досі відкриті.
 
 6. [ ] **Перевірка датасетів на витоки на сервері.** Виконати `env/bin/python datasets/leak-clean/check_leaks.py`, на Vast — з `ASR_CONFIG=config.vast.yaml`, і прочитати `output/leak-clean/report.md`. Для VOA потрібен `labels.csv` вчителя. Скрипт порівнює текст, ім'я аудіофайлу й SHA-256 аудіо, тож заодно закриває перевірку з пункту 3. Не реалізовано: перевірку за диктором для датасетів, крім Common Voice, і пошук речень CV dev/test усередині псевдоміток VOA (README, розділ 3, крок 6).

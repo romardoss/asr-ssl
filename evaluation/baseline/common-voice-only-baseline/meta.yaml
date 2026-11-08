@@ -12,3 +12,4 @@ precision: bf16-true
 seed: 42
 train_data:
 - common_voice
+note: Бейзлан на CV 27.0 (витік dev у train)
