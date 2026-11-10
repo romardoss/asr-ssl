@@ -1,0 +1,216 @@
+# Project config. Another file can replace it: ASR_CONFIG=config.vast.yaml python main.py ...
+# Relative paths anywhere in this file resolve from the repo root.
+
+paths:
+  common_voice: /mnt/data/rberehun/common-voice
+  fleurs: /mnt/data/rberehun/fleurs-uk
+  opentts: /mnt/data/rberehun/opentts-uk
+  tg_voices: /mnt/data/rberehun/tg-voices-uk
+  ukr_dialects: /mnt/data/rberehun/ukr-dialects
+  cv10_test: /mnt/data/rberehun/cv10-uk-testset-clean
+  checkpoints: /mnt/data/rberehun/checkpoints
+  # Common Voice split TSVs (train_validated, dev, test, unlabelled). Clips stay under common_voice/clips.
+  common_voice_splits: datasets/common-voice/raw
+  # Lightning metrics, logs, and plots of fine-tune and student runs: <fine_tune_output>/<name>/version_N
+  fine_tune_output: output/fine-tune
+  # evaluation/evaluate.py results: <evaluation>/<model>-XX
+  evaluation: evaluation
+
+model:
+  id: openai/whisper-medium
+  # Own checkpoint folder: with training.resume the old model-whisper-uk run would be resumed.
+  name: model-whisper-uk-cv-fleurs
+  language: uk
+
+# The one GPU of every stage: fine-tune, student, multi_step, evaluation, labelling, language ID.
+# Exactly one must be true. For parallel runs use one config file per GPU (ASR_CONFIG).
+gpus:
+  nvidia0: true
+  nvidia1: false
+
+# Full checkpoint (weights and optimizer) every this fraction of an epoch, for every training stage.
+# 0.25 saves at 25, 50, and 75 %; the end of each epoch is always saved. 1.0: epoch ends only.
+checkpoint_every: 0.25
+# true: a finished training run (fine-tune, student, every multi_step step) deletes its mid-epoch
+# checkpoints and keeps the end of each epoch. false keeps them all.
+remove_mid_epoch_checkpoints: true
+
+batch_size:
+  train: 32
+  # для суто тренування 8 забирає 20гб відеопам'яті, можна більше але обережно
+  # dev during fine-tuning; the optimizer is still in memory
+  testing_after_train: 8
+  # evaluation/evaluate.py, no optimizer resident
+  # для суто тестування 32 забирає 11гб відеопам'яті, можна більше
+  # для суто тестування 64 забирає 16гб відеопам'яті, можна більше
+  # 96 - OOM
+  testing: 64
+
+training:
+  learning_rate: 0.00001
+  warmup_steps: 50
+  max_epochs: 2
+  num_workers: 4
+  # bf16-mixed: bf16 compute, fp32 weights and AdamW state. bf16-true rounds updates of lr 1e-5 away.
+  precision: bf16-mixed
+  seed: 42
+  gradient_clip: 1.0
+  weight_decay: 0.01
+  resume: true
+  baseline_eval: true
+  # 1.0 means the whole split. An integer means that many batches.
+  limit_train_batches: 1.0
+  limit_val_batches: 1.0
+
+data:
+  max_audio_seconds: 30.0
+  max_label_tokens: 448
+  # The train sets are concatenated into one train split, the dev sets into one dev split.
+  # evaluate.py scores each test set alone, plus combined_weighted and combined_mean.
+  # common_voice, fleurs, and ukr_dialects have train, dev, and test.
+  # opentts and tg_voices are train only. cv10_test is test only.
+  # Broadcast Speech and YODAS2 stay out: their labels are unreliable.
+  train: [common_voice]
+  dev: [common_voice]
+  test: [common_voice, fleurs, ukr_dialects, cv10_test]
+
+pseudo_labelling:
+  teacher_model: /mnt/data/rberehun/checkpoints/model-whisper-uk/model-whisper-uk-epoch00.ckpt
+  voa: /mnt/data/rberehun/voa-ukr
+  ukrainian_meta: datasets/voa-ukr/ukrainian.csv
+  timestamps: datasets/voa-ukr/ukrainian_30s.csv
+  sample_rate: 16000
+  batch_size: 64
+  language: uk
+  task: transcribe
+  precision: bf16
+  resume: true
+  output_dir: output/pseudo-labelling
+
+student:
+  # Train on VOA slices. Dev during the epoch and the test after it are Common Voice.
+  name: student_whisper-commonvoice-based
+  base: openai/whisper-medium
+  init: /mnt/data/rberehun/checkpoints/model-whisper-uk/model-whisper-uk-epoch00.ckpt
+  # latest uses the newest labels.csv / label_marks.csv for pseudo_labelling.teacher_model
+  marks: latest
+  labels: latest
+  # false trains on every non-empty label and does not read marks
+  filter_marks: true
+  accepted_mark: [3]
+  # Labelled train sets (data.train names) trained in the same run after the pseudo-labels:
+  # each epoch ends on them. accepted_mark does not apply to them. Empty: pseudo-labels only.
+  extra_train: []
+  voa: /mnt/data/rberehun/voa-ukr
+  sample_rate: 16000
+  language: uk
+  eval_data: common_voice
+  batch_size:
+    train: 16
+    eval: 8
+  learning_rate: 0.00001
+  warmup_steps: 50
+  max_epochs: 2
+  num_workers: 4
+  # bf16-mixed: bf16 compute, fp32 weights and AdamW state. bf16-true rounds updates of lr 1e-5 away.
+  precision: bf16-mixed
+  seed: 42
+  gradient_clip: 1.0
+  weight_decay: 0.01
+  resume: true
+  baseline_eval: false
+  limit_train_batches: 1.0
+  limit_val_batches: 1.0
+  limit_test_batches: 1.0
+  val_every: 0.25
+  max_audio_seconds: 30.0
+  max_label_tokens: 448
+
+# Multi-step fine-tuning: fine-tune/multi_step.py, or pipeline.multi_step.
+# Each step starts from the final checkpoint of the step before it; step 1 from init.
+# data: pseudo trains on VOA pseudo-labels with the student settings; accepted_mark keeps
+#   only those judge marks (leave it out to use every label).
+# data: [dataset, ...] trains on labelled sets from data.train names with the training settings.
+# data: [pseudo, dataset, ...] trains on both in one student run (student.extra_train): each epoch goes
+#   through the pseudo-labels first, then the datasets. accepted_mark filters only the pseudo part.
+# A step may set max_epochs, learning_rate, and warmup_steps; anything else comes from its section.
+# Checkpoints: <paths.checkpoints>/<name>-s<N>-<data>_01. A finished step is skipped on a rerun,
+# so a new experiment needs a new name. name must start with student_.
+multi_step:
+  name: student_mix-m345+cv-m5+cv
+  init: /mnt/data/rberehun/checkpoints/model-whisper-uk/model-whisper-uk-epoch00.ckpt
+  # What evaluate.py scores into results.csv: steps (final checkpoint of each step),
+  # all (also the first epoch of each step), last (end of the chain), none.
+  evaluate: steps
+  steps:
+    - data: [pseudo, common_voice]
+      accepted_mark: [3, 4, 5]
+      max_epochs: 1
+    - data: [pseudo, common_voice]
+      accepted_mark: [5]
+      max_epochs: 1
+  # Another chain (name student_chain-m345-cv): alternate steps.
+  # steps:
+  #   - data: pseudo
+  #     accepted_mark: [3, 4, 5]
+  #     max_epochs: 2
+  #   - data: [common_voice]
+  #     max_epoch: 1
+  #   - data: pseudo
+  #     accepted_mark: [3, 4, 5]
+  #     max_epochs: 2
+  #   - data: [common_voice]
+  #     max_epoch: 1
+
+# VOA preparation files: pipeline.language and pipeline.timestamps, plus the analysis scripts.
+# The final outputs of those stages are pseudo_labelling.ukrainian_meta and pseudo_labelling.timestamps.
+voa_prep:
+  # scripts/monitor/meta_collector.py: Whisper transcript and language per clip
+  whisper_meta: datasets/voa-ukr/voa_ukr_meta.json
+  # scripts/monitor/predict_languages.py: MMS language logits per clip
+  mms_languages: datasets/voa-ukr/mms-language-confidences.csv
+  # scripts/monitor/split_language_meta.py: clips that are not Ukrainian
+  other_languages: datasets/voa-ukr/other_languages.csv
+  # pseudo-labelling/vad-chunking/chunk.py: per-shard VAD progress
+  vad_progress: datasets/voa-ukr/vad-progress
+  # scripts/monitor/language_analysis.py figures
+  language_figures: analysis/voa-meta-plots
+  # scripts/monitor/meta_stats.py figures
+  meta_figures: output/eda
+
+# run, skip, or skip_if_present. student, evaluate, and multi_step are run or skip.
+# skip_if_present leaves a step out when its output file is already on disk:
+# language -> pseudo_labelling.ukrainian_meta
+# timestamps -> pseudo_labelling.timestamps
+# label -> newest run under pseudo_labelling.output_dir already has labels.csv
+# clean -> label_marks.csv beside those labels
+pipeline:
+  language: skip_if_present
+  timestamps: skip_if_present
+  label: skip_if_present
+  clean: skip
+  # The multi_step chain (section above) replaces the single student run, so student and its evaluate are off.
+  student: skip
+  evaluate: skip
+  multi_step: run
+  chunk_processes: 6
+  mms_model: facebook/mms-lid-256
+  mms_batch_size: 16
+  mms_fp16: true
+  judge_workers: 4
+  judge_retries: 3
+  # OpenRouter chat model. The API key stays in .env. Empty is allowed only when clean does not run,
+  # or when USE_DECISION_INSTEAD_OF_LLM=true: the judge then uses OPENROUTER_DECISION_MODEL (decisions.py).
+  judge_model: ""
+
+# scripts/vast/download_data.py: Hugging Face dataset repos for the local paths above.
+# Public repos already have the layout the code reads. private_repo holds what is not
+# public: common-voice/*.tar, fleurs-uk/, checkpoints/, pseudo-labelling/ (see HF_UPLOAD.md).
+# robinhad/VOA-ukr is gated: the HF_TOKEN account needs approved access.
+downloads:
+  private_repo: CHANGE_ME/asr-ssl-vast
+  opentts: Yehor/opentts-uk
+  tg_voices: Yehor/tg-voices-uk
+  ukr_dialects: KSE-RESEARCH-Group/ukr-dialects-audio-dataset
+  cv10_test: Yehor/cv10-uk-testset-clean
+  voa: robinhad/VOA-ukr

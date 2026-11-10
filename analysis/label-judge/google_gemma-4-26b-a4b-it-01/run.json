@@ -1,0 +1,34 @@
+{
+  "model": "google/gemma-4-26b-a4b-it",
+  "started": "2026-11-08T12:43:53",
+  "datasets": [
+    "common_voice",
+    "fleurs",
+    "opentts",
+    "tg_voices",
+    "ukr_dialects",
+    "cv10_test"
+  ],
+  "splits": [
+    "train",
+    "dev",
+    "test"
+  ],
+  "per_split": 0,
+  "seed": 0,
+  "population": {
+    "common_voice/train": 62460,
+    "common_voice/dev": 10955,
+    "common_voice/test": 10956,
+    "fleurs/train": 2810,
+    "fleurs/dev": 325,
+    "fleurs/test": 750,
+    "opentts/train": 23983,
+    "tg_voices/train": 12069,
+    "ukr_dialects/train": 27520,
+    "ukr_dialects/dev": 3347,
+    "ukr_dialects/test": 3435,
+    "cv10_test/test": 3204
+  },
+  "prompt_sha256": "46d5132211c4c1e950c194670612448ef39b7d7b14b415d3ca88495b9460ad97"
+}

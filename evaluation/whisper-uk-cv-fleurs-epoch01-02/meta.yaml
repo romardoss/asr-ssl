@@ -1,0 +1,17 @@
+stage: fine-tune
+train_data:
+- common_voice
+cv_train_rows: 62460
+learning_rate: 1.0e-05
+max_epochs: 2
+precision: bf16-mixed
+seed: 42
+model: model-whisper-uk-cv-fleurs
+checkpoint: model-whisper-uk-cv-fleurs-epoch01.ckpt
+epoch: 1
+checkpoint_dir: /mnt/data/rberehun/checkpoints/model-whisper-uk-cv-fleurs_02
+base_model: openai/whisper-medium
+language: uk
+evaluated_at: '2026-11-09 17:15:42'
+git_commit: e4e7160
+note: cv+fleurs train

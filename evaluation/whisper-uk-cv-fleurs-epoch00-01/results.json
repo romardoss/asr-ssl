@@ -1,0 +1,109 @@
+{
+  "model": "/mnt/data/rberehun/checkpoints/model-whisper-uk-cv-fleurs_01/model-whisper-uk-cv-fleurs-epoch00.ckpt",
+  "kind": "ckpt",
+  "base_model": "openai/whisper-medium",
+  "language": "uk",
+  "split": "test",
+  "clips": {
+    "combined_weighted": 18345.0,
+    "combined_mean": 18345.0,
+    "common_voice": 10956.0,
+    "fleurs": 750.0,
+    "ukr_dialects": 3435.0,
+    "cv10_test": 3204.0
+  },
+  "gpus": [
+    "nvidia0"
+  ],
+  "eval_batch_size": 64,
+  "loss": 0.4546298208396609,
+  "metrics": {
+    "wer": 0.2996201388287408,
+    "cer": 0.12642416751151928,
+    "mer": 0.2790550273696341,
+    "wil": 0.4210721449944259,
+    "wip": 0.5789278550055741,
+    "substitutions": 30264.0,
+    "deletions": 6254.0,
+    "insertions": 11912.0,
+    "hits": 125120.0,
+    "n": 18345.0,
+    "clips": 18345.0
+  },
+  "test_sets": {
+    "combined_weighted": {
+      "wer": 0.2996201388287408,
+      "cer": 0.12642416751151928,
+      "mer": 0.2790550273696341,
+      "wil": 0.4210721449944259,
+      "wip": 0.5789278550055741,
+      "substitutions": 30264.0,
+      "deletions": 6254.0,
+      "insertions": 11912.0,
+      "hits": 125120.0,
+      "n": 18345.0,
+      "clips": 18345.0
+    },
+    "combined_mean": {
+      "wer": 0.2723485895402127,
+      "cer": 0.1226634262839352,
+      "mer": 0.23786860424916376,
+      "wil": 0.3436074392312196,
+      "wip": 0.6563925607687804,
+      "datasets": 4.0,
+      "clips": 18345.0
+    },
+    "common_voice": {
+      "wer": 0.13145665092183453,
+      "cer": 0.03385155304035898,
+      "mer": 0.12911070373003106,
+      "wil": 0.21836430404070573,
+      "wip": 0.7816356959592943,
+      "substitutions": 7957.0,
+      "deletions": 965.0,
+      "insertions": 1431.0,
+      "hits": 69834.0,
+      "n": 10956.0,
+      "clips": 10956.0
+    },
+    "fleurs": {
+      "wer": 0.10583455908103943,
+      "cer": 0.029676305747054727,
+      "mer": 0.10479955611041754,
+      "wil": 0.18322391204343735,
+      "wip": 0.8167760879565626,
+      "substitutions": 1238.0,
+      "deletions": 132.0,
+      "insertions": 141.0,
+      "hits": 12907.0,
+      "n": 750.0,
+      "clips": 750.0
+    },
+    "ukr_dialects": {
+      "wer": 0.7468952247682351,
+      "cer": 0.4021962767407848,
+      "mer": 0.6145763992587662,
+      "wil": 0.8017728682926221,
+      "wip": 0.19822713170737793,
+      "substitutions": 19352.0,
+      "deletions": 4961.0,
+      "insertions": 9847.0,
+      "hits": 21423.0,
+      "n": 3435.0,
+      "clips": 3435.0
+    },
+    "cv10_test": {
+      "wer": 0.10520792338974157,
+      "cer": 0.024929569607542328,
+      "mer": 0.10298775789744029,
+      "wil": 0.17106867254811342,
+      "wip": 0.8289313274518866,
+      "substitutions": 1717.0,
+      "deletions": 196.0,
+      "insertions": 493.0,
+      "hits": 20956.0,
+      "n": 3204.0,
+      "clips": 3204.0
+    }
+  }
+}
