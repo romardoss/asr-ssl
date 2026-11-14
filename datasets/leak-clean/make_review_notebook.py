@@ -29,7 +29,8 @@ INTRO = """\
 
 Для кожного такого клипу показано сам клип і до `PARTNERS` його train-пар з плеєрами. Аудіо читається
 з диска сервера (`location`) і вбудовується в сторінку, тому ноутбук треба запускати на машині з даними.
-Плеєр грає в браузері, у тому числі через SSH-тунель чи VS Code Remote-SSH.
+Плеєр грає в браузері, у тому числі через SSH-тунель чи VS Code Remote-SSH. ipywidgets не потрібні:
+сторінки перемикаються параметром `PAGE`, вердикти записуються викликом `verdict(номер, "l")`.
 
 Перед збереженням чи комітом очистіть виводи (`Edit → Clear Outputs`): вони містять аудіо в base64.
 """
@@ -46,7 +47,6 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.ipc as ipc
 import pyarrow.parquet as pq
-import ipywidgets as widgets
 from IPython.display import HTML, display
 
 # Folder with the leak-clean scripts: found from the notebook's folder upwards.
@@ -76,6 +76,7 @@ UNITS = None           # None (all dev/test splits) or a list such as ["common_v
 PER_UNIT = 20          # random sample of flagged clips per dev/test split; None keeps all
 PARTNERS = 2           # train partners shown for each flagged clip
 SEED = 0
+PAGE = 0               # page to show: change it and re-run the "Прослуховування" cell
 PAGE_SIZE = 5          # pairs per page
 '''
 
@@ -166,68 +167,60 @@ def player(dataset: str, location: str) -> str:
 '''
 
 UI = '''\
-verdicts: dict[tuple, str] = {}
-CHOICES = ["?", "leak", "not a leak", "unsure"]
+CHOICES = {"l": "leak", "n": "not a leak", "u": "unsure"}
+verdicts = globals().get("verdicts", {})  # kept when this cell is re-run
+
+
+def clip_key(index: int) -> tuple:
+    clip = flagged.iloc[index]
+    return (clip["key"], clip["group"], clip["id"])
+
+
+def verdict(index: int, choice: str) -> None:
+    """Record a verdict for clip ``index`` (the number on its card): "l" leak, "n" not a leak, "u" unsure."""
+    verdicts[clip_key(index)] = CHOICES.get(choice, choice)
+    print(f"#{index}: {verdicts[clip_key(index)]}")
 
 
 def clip_row(role: str, clip) -> str:
-    text = html.escape(str(clip.get("text_norm", "")))
     return (
         "<tr>"
         f"<td><b>{role}</b></td>"
         f"<td>{html.escape(clip['unit'])}</td>"
         f"<td><small>{html.escape(str(clip['id']))}</small></td>"
-        f"<td>{text}</td>"
+        f"<td>{html.escape(str(clip.get('text_norm', '')))}</td>"
         f"<td>{player(clip['dataset'], clip['location'])}</td>"
         "</tr>"
     )
 
 
-def pair_widget(clip) -> widgets.Widget:
+def pair_html(index: int, clip) -> str:
     partners = train_by_group.get((clip["key"], clip["group"]))
     rows = [clip_row("dev/test", clip)]
     if partners is not None:
         partners = partners.sample(min(len(partners), PARTNERS), random_state=SEED)
         rows += [clip_row("train", partner) for _, partner in partners.iterrows()]
-    note = f"{clip['key']} group {clip['group']}, {clip['copies']} copies in {html.escape(clip['units'])}"
+    note = f"#{index}: {clip['key']} group {clip['group']}, {clip['copies']} copies in {html.escape(clip['units'])}"
     if clip["same_bytes"]:
         note += f", same_bytes={clip['same_bytes']}"
-    card = widgets.HTML(f"<p><b>{note}</b></p><table>{''.join(rows)}</table>")
-    key = (clip["key"], clip["group"], clip["id"])
-    verdict = widgets.ToggleButtons(options=CHOICES, value=verdicts.get(key, "?"), description="Verdict:")
-    verdict.observe(lambda change: verdicts.__setitem__(key, change["new"]), names="value")
-    return widgets.VBox([card, verdict], layout=widgets.Layout(border="1px solid #8885", padding="6px", margin="6px 0"))
+    marked = verdicts.get(clip_key(index), "?")
+    return (
+        '<div style="border:1px solid #8885;padding:6px;margin:6px 0">'
+        f"<p><b>{note}</b> &mdash; verdict: <b>{marked}</b></p><table>{''.join(rows)}</table></div>"
+    )
 
 
-view = widgets.Output()
-state = {"page": 0}
 pages = max(1, -(-len(flagged) // PAGE_SIZE))
-label = widgets.Label()
-previous_button = widgets.Button(description="< prev")
-next_button = widgets.Button(description="next >")
+start = PAGE * PAGE_SIZE
+print(f"page {PAGE} (valid: 0-{pages - 1}), clips {start}-{min(start + PAGE_SIZE, len(flagged)) - 1} of {len(flagged)}")
+for index in range(start, min(start + PAGE_SIZE, len(flagged))):
+    display(HTML(pair_html(index, flagged.iloc[index])))
+'''
 
-
-def render() -> None:
-    start = state["page"] * PAGE_SIZE
-    label.value = f"page {state['page'] + 1} of {pages}, clips {start + 1}-{min(start + PAGE_SIZE, len(flagged))} of {len(flagged)}"
-    view.clear_output(wait=True)
-    with view:
-        for _, clip in flagged.iloc[start : start + PAGE_SIZE].iterrows():
-            display(pair_widget(clip))
-
-
-def turn(step: int):
-    def handler(_):
-        state["page"] = min(max(state["page"] + step, 0), pages - 1)
-        render()
-
-    return handler
-
-
-previous_button.on_click(turn(-1))
-next_button.on_click(turn(1))
-display(widgets.HBox([previous_button, next_button, label]), view)
-render()
+MARK = '''\
+# Record verdicts here, then re-run the "Прослуховування" cell to see them on the cards.
+# l = leak, n = not a leak, u = unsure
+verdict(0, "l")
 '''
 
 SAVE = '''\
@@ -264,6 +257,8 @@ def main() -> None:
             cell("code", AUDIO),
             cell("markdown", "## Прослуховування"),
             cell("code", UI),
+            cell("markdown", "## Вердикти"),
+            cell("code", MARK),
             cell("markdown", "## Зберегти вердикти"),
             cell("code", SAVE),
         ],
