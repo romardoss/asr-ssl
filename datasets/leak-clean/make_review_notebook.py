@@ -58,7 +58,7 @@ LEAK_DIR = next(
 )
 sys.path.insert(0, str(LEAK_DIR))
 
-from find_audio_matches import load_compared, match
+from find_audio_matches import MIN_TEXT_SIMILARITY, load_compared, match
 from find_overlaps import repeat_groups
 from leak_common import output_dir
 
@@ -71,6 +71,7 @@ PARAMS = '''\
 # What to review. Re-run this cell and everything below after changing it.
 MODE = "sha256"        # "sha256": same audio bytes | "name": same file name | "text": same normalized text
 NAME_SAME_BYTES = None # only for MODE = "name": None (all), or a list such as ["no", "unknown"]
+MIN_NAME_TEXT_SIMILARITY = MIN_TEXT_SIMILARITY  # only for MODE = "name": as --min-text-similarity (0 = off)
 MIN_WORDS = 4          # only for MODE = "text": as --min-words in find_overlaps.py
 UNITS = None           # None (all dev/test splits) or a list such as ["common_voice/test", "cv10_test/test"]
 PER_UNIT = 20          # random sample of flagged clips per dev/test split; None keeps all
@@ -84,7 +85,7 @@ CANDIDATES = '''\
 metadata = load_compared(FOLDER)  # train/dev/test only, with ``unit``, as in find_audio_matches.py
 
 if MODE in ("sha256", "name"):
-    matches, ignored = match(metadata)  # the same call that writes audio_matches.csv
+    matches, ignored = match(metadata, MIN_NAME_TEXT_SIMILARITY)  # the same call that writes audio_matches.csv
     frame = matches[matches["key"] == MODE].copy()
     if MODE == "name" and NAME_SAME_BYTES is not None:
         frame = frame[frame["same_bytes"].isin(NAME_SAME_BYTES)]
