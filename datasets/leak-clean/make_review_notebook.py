@@ -73,6 +73,9 @@ MODE = "sha256"        # "sha256": same audio bytes | "name": same file name | "
 NAME_SAME_BYTES = None # only for MODE = "name": None (all), or a list such as ["no", "unknown"]
 MIN_NAME_TEXT_SIMILARITY = MIN_TEXT_SIMILARITY  # only for MODE = "name": as --min-text-similarity (0 = off)
 MIN_WORDS = 4          # only for MODE = "text": as --min-words in find_overlaps.py
+DATASETS = ["common_voice", "cv10_test"]  # None (all datasets) or a list of dataset names such as ["common_voice", "cv10_test"]
+PARTNER_DATASETS = None  # None (train partners from any dataset) or a list such as ["common_voice"]
+CROSS_DATASET_ONLY = False  # True: show only partners from a different dataset than the flagged clip
 UNITS = None           # None (all dev/test splits) or a list such as ["common_voice/test", "cv10_test/test"]
 PER_UNIT = 20          # random sample of flagged clips per dev/test split; None keeps all
 PARTNERS = 2           # train partners shown for each flagged clip
@@ -102,10 +105,28 @@ frame = frame.reset_index(drop=True)
 has_train = frame["units"].map(lambda units: any(unit.endswith("/train") for unit in units.split("; "))).astype(bool)
 frame["unit"] = frame["dataset"] + "/" + frame["split"]
 flagged = frame[has_train & (frame["split"] != "train")]
+if DATASETS is not None:
+    flagged = flagged[flagged["dataset"].isin(DATASETS)]
 if UNITS is not None:
     flagged = flagged[flagged["unit"].isin(UNITS)]
 
 train_by_group = {key: rows for key, rows in frame[frame["split"] == "train"].groupby(["key", "group"])}
+
+
+def partners_of(clip):
+    """Train partners of a flagged clip, after PARTNER_DATASETS and CROSS_DATASET_ONLY."""
+    partners = train_by_group.get((clip["key"], clip["group"]))
+    if partners is None:
+        return None
+    if PARTNER_DATASETS is not None:
+        partners = partners[partners["dataset"].isin(PARTNER_DATASETS)]
+    if CROSS_DATASET_ONLY:
+        partners = partners[partners["dataset"] != clip["dataset"]]
+    return partners if len(partners) else None
+
+
+if PARTNER_DATASETS is not None or CROSS_DATASET_ONLY:  # keep only clips that still have a partner
+    flagged = flagged[[partners_of(clip) is not None for _, clip in flagged.iterrows()]]
 
 print(f"{MODE}: flagged dev/test clips per split (all of them, before sampling)")
 print(flagged.groupby("unit").size().to_string() if len(flagged) else "nothing flagged")
@@ -196,7 +217,7 @@ def clip_row(role: str, clip) -> str:
 
 
 def pair_html(index: int, clip) -> str:
-    partners = train_by_group.get((clip["key"], clip["group"]))
+    partners = partners_of(clip)
     rows = [clip_row("dev/test", clip)]
     if partners is not None:
         partners = partners.sample(min(len(partners), PARTNERS), random_state=SEED)
@@ -237,6 +258,13 @@ print(f"wrote {verdicts_path} ({len(rows)} verdicts)")
 print(pd.Series([row["verdict"] for row in rows]).value_counts().to_string() if rows else "no verdicts yet")
 '''
 
+DELETE = '''\
+# Delete the saved verdicts file once all experiments are done. Uncomment to run.
+# verdicts_path = FOLDER / f"review_verdicts_{MODE}.csv"
+# verdicts_path.unlink(missing_ok=True)
+# print(f"deleted {verdicts_path}")
+'''
+
 
 def cell(kind: str, source: str) -> dict:
     base = {"cell_type": kind, "metadata": {}, "source": source.splitlines(keepends=True)}
@@ -262,6 +290,8 @@ def main() -> None:
             cell("code", MARK),
             cell("markdown", "## Зберегти вердикти"),
             cell("code", SAVE),
+            cell("markdown", "## Видалити файл із вердиктами"),
+            cell("code", DELETE),
         ],
         "metadata": {
             "kernelspec": {"display_name": "Python 3", "language": "python", "name": "python3"},
