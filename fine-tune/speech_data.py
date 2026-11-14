@@ -21,6 +21,7 @@ import pyarrow.parquet as pq
 import torch
 
 from common_voice import load_split
+from leak_filter import LEAK_FILTERED, apply_leak_filter
 from settings import Settings, load_settings
 
 # Config name -> which roles it can fill, and the directory name of that role.
@@ -59,6 +60,14 @@ class _FramePart:
 
     def example_id(self, index: int) -> str:
         return self.paths[index]
+
+    def drop_leaks(self, leak_ids: set[str]) -> int:
+        """Remove clips whose file name is in ``leak_ids``; returns how many went."""
+        keep = [index for index, path in enumerate(self.paths) if Path(path).name not in leak_ids]
+        removed = len(self.paths) - len(keep)
+        self.paths = [self.paths[index] for index in keep]
+        self.sentences = [self.sentences[index] for index in keep]
+        return removed
 
     def read(self, index: int) -> tuple[str, torch.Tensor, int]:
         waveform, sample_rate = decode_audio(self.paths[index])
@@ -205,6 +214,14 @@ class _ParquetPart:
 
     def example_id(self, index: int) -> str:
         return self.rows[index][4]
+
+    def drop_leaks(self, leak_ids: set[str]) -> int:
+        """Remove rows whose ``<file>:<row group>:<row>`` id is in ``leak_ids``; returns how many went."""
+        names = [Path(path).name for path in self.files]
+        keep = [row for row in self.rows if f"{names[row[0]]}:{row[1]}:{row[2]}" not in leak_ids]
+        removed = len(self.rows) - len(keep)
+        self.rows = keep
+        return removed
 
     def _audio_bytes(self, file_index: int, group: int, offset: int) -> bytes:
         key = (file_index, group)
@@ -373,10 +390,20 @@ def _part(settings: Settings, name: str, role: str):
     return _parquet(settings, name, folder_name)
 
 
+def _train_part(settings: Settings, name: str):
+    """A train part without the clips that also sit in dev or test (see ``leak_filter.py``)."""
+    part = _part(settings, name, "train")
+    if name in LEAK_FILTERED:
+        part = apply_leak_filter(part, name)
+        if len(part) == 0:
+            raise SystemExit(f"{name} train has no clips left after the leak filter")
+    return part
+
+
 def load_train_split(names: tuple[str, ...], settings: Settings | None = None) -> SpeechSplit:
     """The train splits of ``names`` as one split, as ``data.train`` would load them."""
     cfg = settings or load_settings()
-    return SpeechSplit([_part(cfg, name, "train") for name in names], tuple(names))
+    return SpeechSplit([_train_part(cfg, name) for name in names], tuple(names))
 
 
 def load_configured_splits(settings: Settings | None = None) -> dict[str, SpeechSplit]:
@@ -384,6 +411,6 @@ def load_configured_splits(settings: Settings | None = None) -> dict[str, Speech
     selected = {"train": cfg.train_data, "dev": cfg.dev_data, "test": cfg.test_data}
     splits = {}
     for role, names in selected.items():
-        parts = [_part(cfg, name, role) for name in names]
+        parts = [_train_part(cfg, name) if role == "train" else _part(cfg, name, role) for name in names]
         splits[role] = SpeechSplit(parts, names)
     return splits
