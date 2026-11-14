@@ -14,6 +14,8 @@
 1. `gpus` — єдина GPU для всього. Щоб запустити другий `multi-step` паралельно, змініть у `config.yaml` і `gpus`, і `multi_step.name`: перший запуск уже зберіг свою копію конфігу й зміни не побачить. Інший варіант — окремі конфіги через `ASR_CONFIG=...`.
 2. `checkpoint_every: 0.25` — проміжні чекпоінти на 25, 50 і 75 % епохи.
 3. `remove_mid_epoch_checkpoints: true` — після завершеного навчання проміжні чекпоінти видаляються, а кінець кожної епохи лишається.
+4. `training.val_every` і `student.val_every` (`0.25`) — dev рахується кожні 25 % епохи, тож метрики є і по степах, і по епохах.
+5. `mlflow` — відстеження експериментів (див. нижче).
 
 ```bash
 python main.py pipeline --dry-run              # показати етапи пайплайну
@@ -25,6 +27,25 @@ python main.py judge --backend decisions       # оцінити псевдомі
 ```
 
 Повний список команд є в docstring `main.py`.
+
+## Відстеження експериментів (MLflow)
+
+Усі запуски навчання (вчитель, студент, `multi_step`) і evaluation пишуть метрики по степах і по епохах, параметри та артефакти в MLflow. Сховище: SQLite `output/mlflow/mlflow.db`, налаштування в секції `mlflow` конфігу. Деталі — у docstring `fine-tune/tracking.py`.
+
+```bash
+pip install mlflow                                                    # один раз
+python fine-tune/backfill_mlflow.py --dry-run                         # які старі запуски знайдено
+python fine-tune/backfill_mlflow.py                                   # завантажити старі запуски (можна повторювати)
+python fine-tune/backfill_mlflow.py --only evaluation                 # лише evaluation/*
+mlflow ui --backend-store-uri sqlite:///output/mlflow/mlflow.db       # відкрити UI на http://127.0.0.1:5000
+mlflow ui --backend-store-uri sqlite:///output/mlflow/mlflow.db --host 0.0.0.0 --port 5000   # з іншої машини
+```
+
+1. Experiment `asr-whisper-uk` — тренування, `asr-whisper-uk-evaluation` — evaluation. Назва experiment береться з `mlflow.experiment`.
+2. Криві по степах: `train_loss_step`, `lr-AdamW`, `val_loss`, `val_wer`, `val_cer` та інші `val_*`. Для кривих по епохах: `epoch/train_loss`, `epoch/val_*`. У UI обирайте x-axis = Step.
+3. Evaluation: `test/wer`, `test/cer`, `test/<датасет>/wer`. Тег `train_run_id` веде до тренувального run, а ланцюжок `multi_step` показується як parent run.
+4. Перервене навчання з `resume: true` продовжує той самий run.
+5. Вимкнути: `mlflow.enabled: false`.
 
 ## Результати
 

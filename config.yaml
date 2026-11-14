@@ -35,6 +35,16 @@ checkpoint_every: 0.25
 # checkpoints and keeps the end of each epoch. false keeps them all.
 remove_mid_epoch_checkpoints: true
 
+# MLflow: metrics by step and epoch, params, and artifacts of fine-tune, student, multi_step, and evaluation.
+# Store: SQLite file (a relative path resolves from the repo root). View: mlflow ui --backend-store-uri sqlite:///output/mlflow/mlflow.db
+# Evaluations go to the experiment <experiment>-evaluation. enabled: false turns tracking off.
+# Old runs: python fine-tune/backfill_mlflow.py
+mlflow:
+  enabled: true
+  tracking_uri: sqlite:///output/mlflow/mlflow.db
+  artifacts: output/mlflow/artifacts
+  experiment: asr-whisper-uk
+
 batch_size:
   train: 32
   # для суто тренування 8 забирає 20гб відеопам'яті, можна більше але обережно
@@ -58,6 +68,8 @@ training:
   weight_decay: 0.01
   resume: true
   baseline_eval: true
+  # Dev is scored every this fraction of an epoch (0.25: four times per epoch); 1.0: once, at epoch end.
+  val_every: 0.25
   # 1.0 means the whole split. An integer means that many batches.
   limit_train_batches: 1.0
   limit_val_batches: 1.0

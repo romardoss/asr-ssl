@@ -52,6 +52,7 @@ class Settings:
     limit_val_batches: int | float
     checkpoint_every: float
     remove_mid_epoch_checkpoints: bool
+    val_every: float
     max_audio_seconds: float
     max_label_tokens: int
     train_data: tuple[str, ...]
@@ -226,6 +227,8 @@ def load_settings(path: Path | None = None) -> Settings:
         limit_val_batches=_limit(training, "limit_val_batches", "training.limit_val_batches"),
         checkpoint_every=_checkpoint_every(loaded),
         remove_mid_epoch_checkpoints=_bool(loaded, "remove_mid_epoch_checkpoints", "remove_mid_epoch_checkpoints"),
+        # Optional, so a config saved by an older run still loads: dev once per epoch, as before.
+        val_every=_fraction(training, "val_every", "training.val_every") if "val_every" in training else 1.0,
         max_audio_seconds=_positive_float(data, "max_audio_seconds", "data.max_audio_seconds"),
         max_label_tokens=_positive_int(data, "max_label_tokens", "data.max_label_tokens"),
         train_data=_role_names(data, "train", "data.train"),

@@ -73,6 +73,7 @@ ft = _load_fine_tune()
 
 import run_meta
 import results_table
+import tracking
 import jiwer
 import pandas as pd
 import torch
@@ -616,6 +617,7 @@ def main() -> None:
         log.info("wrote %s", path)
     table = results_table.add_run(run_dir, ft.SETTINGS.evaluation_dir)
     log.info("updated %s", table)
+    tracking.log_evaluation(run_dir)
 
 
 if __name__ == "__main__":

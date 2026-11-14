@@ -67,7 +67,7 @@ python main.py pipeline --dry-run
 1. `torch`, `torchaudio`, `transformers`, `lightning`, `faster-whisper`, `ctranslate2` без версій. Свіжий `pip install` поставить torch під іншу версію CUDA, ніж у драйвері хоста vast.ai, або перезапише torch з образу.
 2. ✅ `av` (PyAV) імпортується напряму (`fine-tune/speech_data.py:17`, `fine-tune/fine-tune-student.py:52`). Раніше його не було в `requirements.txt` і він приходив лише транзитивно через `faster-whisper`; тепер додано явно.
 3. `pandas==3.0.6` і `numpy==2.5.3` потребують Python ≥ 3.11. Частина стандартних образів `pytorch/pytorch` має старіший Python.
-4. `wandb` у списку є, але ніде не використовується: логування йде через `CSVLogger`.
+4. ✅ `wandb` замінено на `mlflow`: логування йде через `CSVLogger` і MLflow (`fine-tune/tracking.py`).
 
 Системні залежності:
 
@@ -93,7 +93,7 @@ python main.py pipeline --dry-run
    1. Зафіксувати версії: згенерувати `requirements.lock.txt` (`pip freeze`) з робочого серверного середовища, де вже йшло навчання.
    2. Додати `av` у `requirements.txt`.
    3. Не перевстановлювати `torch`, якщо він уже є в образі, або явно ставити його з `--index-url https://download.pytorch.org/whl/cu12x`.
-   4. Прибрати `wandb` або почати його використовувати.
+   4. ✅ `wandb` прибрано, замість нього `mlflow`.
 
 ### 1.4. Завантаження даних — ✅ виконано
 

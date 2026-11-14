@@ -15,7 +15,7 @@ torchaudio
 av
 lightning
 jiwer
-wandb
+mlflow
 pyyaml==6.0.3
 
 # Pseudo-labelling

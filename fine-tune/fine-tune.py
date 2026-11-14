@@ -74,6 +74,9 @@ from checkpoints import (
 )
 from init_weights import load_init_model
 from run_meta import chain_fields, cv_train_rows, run_note
+import tracking
+from leak_filter import LEAK_FILTERED
+from project_config import load_config
 from plot_metrics import write_plots
 from common_voice import checkpoint_root
 from speech_data import SpeechSplit, decode_audio, load_configured_splits as load_splits
@@ -466,6 +469,20 @@ def main() -> None:
         "note": run_note(ckpt_dir),
         "resumed_from": ckpt_path.name if ckpt_path else None,
     }
+    tracker = tracking.start_training(
+        ckpt_dir.name,
+        ckpt_dir,
+        {
+            **train_meta,
+            **tracking.config_params(load_config(), "fine-tune"),
+            "leak_filter": [name for name in cfg.train_data if name in LEAK_FILTERED],
+            **tracking.clip_params(splits),
+        },
+        {key: train_meta.get(key) for key in ("model", "stage", "init", "chain", "step", "note", "resumed_from")},
+        resumed=ckpt_path is not None,
+    )
+    if tracker is not None:
+        train_meta["mlflow_run_id"] = tracker.run_id
     checkpoint_callback = BatchFractionCheckpoint(
         ckpt_dir, cfg.model_name, fraction=cfg.checkpoint_every, meta=train_meta
     )
@@ -479,8 +496,9 @@ def main() -> None:
         strategy=strategy,
         precision=cfg.precision,
         gradient_clip_val=cfg.gradient_clip,
-        callbacks=[checkpoint_callback, LearningRateMonitor(logging_interval="step")],
-        logger=logger,
+        val_check_interval=cfg.val_every,
+        callbacks=[checkpoint_callback, LearningRateMonitor(logging_interval="step"), *([tracker.callback()] if tracker else [])],
+        logger=[logger, tracker.logger()] if tracker else logger,
         default_root_dir=str(output_dir),
         enable_checkpointing=False,
         num_sanity_val_steps=0,
@@ -529,6 +547,11 @@ def main() -> None:
         logger.save()
         for path in write_plots(Path(logger.log_dir)):
             log.info("wrote %s", path)
+        if tracker is not None:
+            tracker.log_files(
+                [destination, output_dir / "train.log", Path(logger.log_dir) / "metrics.csv", ckpt_dir / "meta.yaml", ckpt_dir / "config.yaml"]
+            )
+            tracker.log_dir(Path(logger.log_dir) / "plots", "plots")
         log.info("dev %s", module.val_metrics)
 
 

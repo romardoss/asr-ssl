@@ -66,6 +66,7 @@ from checkpoints import (  # noqa: E402
     student_checkpoint_dirs,
 )
 from run_meta import CHAIN_ENV, NOTE_ENV, STEP_ENV  # noqa: E402
+import tracking  # noqa: E402
 from dataset_roles import check_names  # noqa: E402
 from settings import load_settings, load_student_settings  # noqa: E402
 
@@ -272,6 +273,28 @@ def main() -> None:
         path = write_config(chain, step, derived)
         (load_student_settings if step.pseudo else load_settings)(path)
 
+    parent = None
+    if not args.dry_run:
+        parent = tracking.chain_run(
+            chain.name,
+            OUTPUT_DIR / chain.name,
+            {
+                "init": chain.init,
+                "evaluate": chain.evaluate,
+                "steps": len(chain.steps),
+                **{f"step{step.number}": step.description for step in chain.steps},
+            },
+        )
+    try:
+        previous = run_chain(args, chain, settings, checkpoints, config, evaluation_config, parent)
+    except BaseException:
+        tracking.finish_run(parent, False)
+        raise
+    tracking.finish_run(parent, True)
+    print(f"\nchain {chain.name} finished: {previous}", flush=True)
+
+
+def run_chain(args, chain: Chain, settings, checkpoints: Path, config: dict, evaluation_config: Path, parent: str | None) -> str:
     previous = chain.init
     for step in chain.steps:
         name = chain.step_name(step)
@@ -280,6 +303,8 @@ def main() -> None:
         epochs = max_epochs(derived, step)
         env = dict(os.environ)
         env.update({"ASR_CONFIG": str(path), CHAIN_ENV: chain.name, STEP_ENV: str(step.number), NOTE_ENV: step_note(chain, step)})
+        if parent:
+            env[tracking.PARENT_ENV] = parent
         print(f"\n== step {step.number}/{len(chain.steps)}: {step.description} -> {name}", flush=True)
 
         directory, checkpoint, finished = step_state(checkpoints, name, epochs)
@@ -309,8 +334,7 @@ def main() -> None:
         if cleaned:
             print(cleaned, flush=True)
         previous = str(checkpoint)
-
-    print(f"\nchain {chain.name} finished: {previous}", flush=True)
+    return previous
 
 
 if __name__ == "__main__":
