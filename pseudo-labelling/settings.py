@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))
 
-from project_config import CONFIG_PATH, configured_gpu  # noqa: E402
+from project_config import CONFIG_PATH, configured_gpu, load_config  # noqa: E402
 
 
 @dataclass(frozen=True)
@@ -88,9 +88,7 @@ def load_labelling(path: Path | None = None) -> LabellingSettings:
     config_path = path or CONFIG_PATH
     if not config_path.is_file():
         raise SystemExit(f"Config not found: {config_path}")
-    loaded = yaml.safe_load(config_path.read_text(encoding="utf-8"))
-    if not isinstance(loaded, dict):
-        raise SystemExit(f"{config_path} must be a mapping")
+    loaded = load_config(config_path)
 
     section = _mapping(loaded, "pseudo_labelling")
     model = _mapping(loaded, "model")

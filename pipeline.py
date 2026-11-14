@@ -31,7 +31,7 @@ from pathlib import Path
 import yaml
 
 import decisions
-from project_config import CONFIG_PATH, repo_path
+from project_config import CONFIG_PATH, load_config, repo_path
 
 ROOT = Path(__file__).resolve().parent
 FILE_MODES = {"run", "skip", "skip_if_present"}
@@ -125,9 +125,7 @@ def load_pipeline(path: Path | None = None) -> PipelineSettings:
     config_path = path or CONFIG_PATH
     if not config_path.is_file():
         raise SystemExit(f"Config not found: {config_path}")
-    loaded = yaml.safe_load(config_path.read_text(encoding="utf-8"))
-    if not isinstance(loaded, dict):
-        raise SystemExit(f"{config_path} must be a mapping")
+    loaded = load_config(config_path)
     section = _mapping(loaded, "pipeline")
     student = _mapping(loaded, "student")
     paths = _mapping(loaded, "paths")

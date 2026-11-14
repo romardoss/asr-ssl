@@ -183,8 +183,12 @@ def config_params(config: dict, stage: str) -> dict:
     section = config.get("student" if student else "training") or {}
     batches = (section if student else config).get("batch_size") or {}
     data = config.get("data") or {}
+    batch = batches.get("train")
+    accumulate = section.get("accumulate_grad_batches")
     return {
-        "batch_size": batches.get("train"),
+        "batch_size": batch,
+        "accumulate_grad_batches": accumulate,
+        "effective_batch_size": batch * (accumulate or 1) if isinstance(batch, int) else None,
         "warmup_steps": section.get("warmup_steps"),
         "weight_decay": section.get("weight_decay"),
         "gradient_clip": section.get("gradient_clip"),

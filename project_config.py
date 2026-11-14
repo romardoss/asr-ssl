@@ -7,12 +7,25 @@ Without it the repo ``config.yaml`` is used. A relative path, in
 ``fine-tune/settings.py`` and ``pseudo-labelling/settings.py`` validate their
 own sections. Scripts that need only a few values read them here.
 
+``load_config`` returns the config with three conveniences already applied, so
+every reader sees one complete mapping:
+
+1. ``extends: config.yaml`` at the top of a file: that file is the base, and this
+   one lists only what differs. Mappings merge key by key, lists and values are
+   replaced (``config.vast.yaml`` works this way).
+2. ``${paths.data_root}`` in a string: replaced by the value of that key
+   (any dotted key works). The override of ``paths.data_root`` in an extending
+   file therefore moves every path built from it.
+3. ``student`` takes ``SHARED_TRAINING_KEYS`` from ``training`` (and
+   ``student.batch_size.train`` from ``batch_size.train``) unless it sets them itself.
+
     ASR_CONFIG=config.vast.yaml python main.py pipeline
 """
 
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 import yaml
@@ -36,14 +49,108 @@ def config_path() -> Path:
 CONFIG_PATH = config_path()
 
 
-def load_config(path: Path | None = None) -> dict:
-    source = path or CONFIG_PATH
+# Settings the student run shares with the teacher run (``training``), unless ``student`` sets its own.
+SHARED_TRAINING_KEYS = (
+    "learning_rate",
+    "warmup_steps",
+    "max_epochs",
+    "num_workers",
+    "precision",
+    "seed",
+    "gradient_clip",
+    "weight_decay",
+    "accumulate_grad_batches",
+    "resume",
+    "val_every",
+    "limit_train_batches",
+    "limit_val_batches",
+)
+EXTENDS_KEY = "extends"
+_VARIABLE = re.compile(r"\$\{([A-Za-z0-9_.]+)\}")
+
+
+def _read_mapping(source: Path) -> dict:
     if not source.is_file():
         raise SystemExit(f"Config not found: {source}")
     loaded = yaml.safe_load(source.read_text(encoding="utf-8"))
     if not isinstance(loaded, dict):
         raise SystemExit(f"{source} must be a mapping")
     return loaded
+
+
+def _merge(base: dict, override: dict) -> dict:
+    """Mappings merge key by key; lists and plain values of ``override`` replace those of ``base``."""
+    merged = dict(base)
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _merge(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def _with_base(source: Path, seen: tuple[Path, ...] = ()) -> dict:
+    loaded = _read_mapping(source)
+    parent = loaded.pop(EXTENDS_KEY, None)
+    if parent is None:
+        return loaded
+    if not isinstance(parent, str) or not parent.strip():
+        raise SystemExit(f"{source.name} {EXTENDS_KEY} must be a config file path")
+    base = repo_path(parent.strip())
+    if base.resolve() in {path.resolve() for path in (*seen, source)}:
+        raise SystemExit(f"{source.name} {EXTENDS_KEY} loops back to {base.name}")
+    return _merge(_with_base(base, (*seen, source)), loaded)
+
+
+def _interpolate(config: dict, name: str) -> dict:
+    def lookup(dotted: str):
+        node = config
+        for part in dotted.split("."):
+            if not isinstance(node, dict) or part not in node:
+                raise SystemExit(f"{name}: ${{{dotted}}} points to a key that does not exist")
+            node = node[part]
+        if isinstance(node, (dict, list)) or node is None:
+            raise SystemExit(f"{name}: ${{{dotted}}} must point to a string or a number")
+        return str(node)
+
+    def expand(value):
+        if isinstance(value, str):
+            for _ in range(8):  # a variable may itself hold a variable
+                replaced = _VARIABLE.sub(lambda match: lookup(match.group(1)), value)
+                if replaced == value:
+                    return value
+                value = replaced
+            raise SystemExit(f"{name}: variables in {value!r} do not resolve (a loop?)")
+        if isinstance(value, dict):
+            return {key: expand(item) for key, item in value.items()}
+        if isinstance(value, list):
+            return [expand(item) for item in value]
+        return value
+
+    return expand(config)
+
+
+def _inherit_student(config: dict) -> None:
+    training = config.get("training")
+    student = config.get("student")
+    if not isinstance(training, dict) or not isinstance(student, dict):
+        return
+    for key in SHARED_TRAINING_KEYS:
+        if key in training and key not in student:
+            student[key] = training[key]
+    teacher_batch = config.get("batch_size")
+    if isinstance(teacher_batch, dict) and "train" in teacher_batch:
+        batch = student.setdefault("batch_size", {})
+        if isinstance(batch, dict) and "train" not in batch:
+            batch["train"] = teacher_batch["train"]
+
+
+def load_config(path: Path | None = None) -> dict:
+    """The config as one complete mapping: base file merged, variables expanded, student defaults filled."""
+    source = path or CONFIG_PATH
+    config = _interpolate(_with_base(source), source.name)
+    _inherit_student(config)
+    return config
 
 
 def configured_gpu(loaded: dict | None = None) -> int:

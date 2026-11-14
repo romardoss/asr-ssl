@@ -2,13 +2,17 @@
 # Relative paths anywhere in this file resolve from the repo root.
 
 paths:
-  common_voice: /mnt/data/rberehun/common-voice
-  fleurs: /mnt/data/rberehun/fleurs-uk
-  opentts: /mnt/data/rberehun/opentts-uk
-  tg_voices: /mnt/data/rberehun/tg-voices-uk
-  ukr_dialects: /mnt/data/rberehun/ukr-dialects
-  cv10_test: /mnt/data/rberehun/cv10-uk-testset-clean
-  checkpoints: /mnt/data/rberehun/checkpoints
+  # Root of the datasets. Every path below built from it uses ${paths.data_root}, so another machine
+  # changes this one line (config.vast.yaml does, and sets checkpoints itself).
+  data_root: /mnt/data/rberehun
+  common_voice: ${paths.data_root}/common-voice
+  fleurs: ${paths.data_root}/fleurs-uk
+  opentts: ${paths.data_root}/opentts-uk
+  tg_voices: ${paths.data_root}/tg-voices-uk
+  ukr_dialects: ${paths.data_root}/ukr-dialects
+  cv10_test: ${paths.data_root}/cv10-uk-testset-clean
+  voa: ${paths.data_root}/voa-ukr
+  checkpoints: ${paths.data_root}/checkpoints
   # Common Voice split TSVs (train_validated, dev, test, unlabelled). Clips stay under common_voice/clips.
   common_voice_splits: datasets/common-voice/raw
   # Lightning metrics, logs, and plots of fine-tune and student runs: <fine_tune_output>/<name>/version_N
@@ -46,7 +50,7 @@ mlflow:
   experiment: asr-whisper-uk
 
 batch_size:
-  train: 32
+  train: 16
   # для суто тренування 8 забирає 20гб відеопам'яті, можна більше але обережно
   # dev during fine-tuning; the optimizer is still in memory
   testing_after_train: 8
@@ -59,13 +63,15 @@ batch_size:
 training:
   learning_rate: 0.00001
   warmup_steps: 50
-  max_epochs: 2
+  max_epochs: 5
   num_workers: 4
   # bf16-mixed: bf16 compute, fp32 weights and AdamW state. bf16-true rounds updates of lr 1e-5 away.
   precision: bf16-mixed
   seed: 42
   gradient_clip: 1.0
   weight_decay: 0.01
+  # Optimizer step every this many batches: effective batch = batch_size.train * accumulate_grad_batches.
+  accumulate_grad_batches: 2
   resume: true
   baseline_eval: true
   # Dev is scored every this fraction of an epoch (0.25: four times per epoch); 1.0: once, at epoch end.
@@ -87,8 +93,8 @@ data:
   test: [common_voice, fleurs, ukr_dialects, cv10_test]
 
 pseudo_labelling:
-  teacher_model: /mnt/data/rberehun/checkpoints/model-whisper-uk/model-whisper-uk-epoch00.ckpt
-  voa: /mnt/data/rberehun/voa-ukr
+  teacher_model: ${paths.checkpoints}/model-whisper-uk/model-whisper-uk-epoch00.ckpt
+  voa: ${paths.voa}
   ukrainian_meta: datasets/voa-ukr/ukrainian.csv
   timestamps: datasets/voa-ukr/ukrainian_30s.csv
   sample_rate: 16000
@@ -101,9 +107,12 @@ pseudo_labelling:
 
 student:
   # Train on VOA slices. Dev during the epoch and the test after it are Common Voice.
+  # Not listed here, so taken from training (and batch_size.train): learning_rate, warmup_steps, max_epochs,
+  # num_workers, precision, seed, gradient_clip, weight_decay, accumulate_grad_batches, resume, val_every,
+  # limit_train_batches, limit_val_batches, batch_size.train. Set one here to give the student its own value.
   name: student_whisper-commonvoice-based
   base: openai/whisper-medium
-  init: /mnt/data/rberehun/checkpoints/model-whisper-uk/model-whisper-uk-epoch00.ckpt
+  init: openai/whisper-medium
   # latest uses the newest labels.csv / label_marks.csv for pseudo_labelling.teacher_model
   marks: latest
   labels: latest
@@ -113,28 +122,14 @@ student:
   # Labelled train sets (data.train names) trained in the same run after the pseudo-labels:
   # each epoch ends on them. accepted_mark does not apply to them. Empty: pseudo-labels only.
   extra_train: []
-  voa: /mnt/data/rberehun/voa-ukr
+  voa: ${paths.voa}
   sample_rate: 16000
   language: uk
   eval_data: common_voice
   batch_size:
-    train: 16
     eval: 8
-  learning_rate: 0.00001
-  warmup_steps: 50
-  max_epochs: 2
-  num_workers: 4
-  # bf16-mixed: bf16 compute, fp32 weights and AdamW state. bf16-true rounds updates of lr 1e-5 away.
-  precision: bf16-mixed
-  seed: 42
-  gradient_clip: 1.0
-  weight_decay: 0.01
-  resume: true
   baseline_eval: false
-  limit_train_batches: 1.0
-  limit_val_batches: 1.0
   limit_test_batches: 1.0
-  val_every: 0.25
   max_audio_seconds: 30.0
   max_label_tokens: 448
 
@@ -150,7 +145,7 @@ student:
 # so a new experiment needs a new name. name must start with student_.
 multi_step:
   name: student_mix-m345+cv-m5+cv
-  init: /mnt/data/rberehun/checkpoints/model-whisper-uk/model-whisper-uk-epoch00.ckpt
+  init: openai/whisper-medium
   # What evaluate.py scores into results.csv: steps (final checkpoint of each step),
   # all (also the first epoch of each step), last (end of the chain), none.
   evaluate: steps

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 import re
-import shutil
 import sys
 from pathlib import Path
 
@@ -14,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))
 
-from project_config import CONFIG_PATH  # noqa: E402
+from project_config import CONFIG_PATH, load_config  # noqa: E402
 
 # The copy beside checkpoints and test runs is always named config.yaml,
 # whichever file ASR_CONFIG selected.
@@ -46,7 +45,10 @@ def copy_config(destination: Path, source: Path | None = None, *, replace: bool 
     origin = source if source is not None else CONFIG_PATH
     if not origin.is_file():
         raise SystemExit(f"Config not found: {origin}")
-    shutil.copyfile(origin, target)
+    # Write the resolved config (base file merged, variables expanded): the copy must stay complete
+    # and readable when config.yaml changes later, and a copy of a config that extends another would not be.
+    header = f"# Copy of {origin.name} with extends, variables, and student defaults resolved.\n"
+    target.write_text(header + yaml.safe_dump(load_config(origin), sort_keys=False, allow_unicode=True), encoding="utf-8")
 
 
 def write_meta(destination: Path, fields: dict) -> None:

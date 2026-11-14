@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))
 
-from project_config import CONFIG_PATH, configured_gpu, find_labelling_file, labelling_runs  # noqa: E402,F401
+from project_config import CONFIG_PATH, configured_gpu, find_labelling_file, labelling_runs, load_config  # noqa: E402,F401
 from dataset_roles import check_names  # noqa: E402
 
 
@@ -46,6 +46,7 @@ class Settings:
     seed: int
     gradient_clip: float
     weight_decay: float
+    accumulate_grad_batches: int
     resume: bool
     baseline_eval: bool
     limit_train_batches: int | float
@@ -183,9 +184,7 @@ def load_settings(path: Path | None = None) -> Settings:
     config_path = path or CONFIG_PATH
     if not config_path.is_file():
         raise SystemExit(f"Config not found: {config_path}")
-    loaded = yaml.safe_load(config_path.read_text(encoding="utf-8"))
-    if not isinstance(loaded, dict):
-        raise SystemExit(f"{config_path} must be a mapping")
+    loaded = load_config(config_path)
 
     paths = _mapping(loaded, "paths")
     model = _mapping(loaded, "model")
@@ -221,6 +220,12 @@ def load_settings(path: Path | None = None) -> Settings:
         seed=_non_negative_int(training, "seed", "training.seed"),
         gradient_clip=_positive_float(training, "gradient_clip", "training.gradient_clip"),
         weight_decay=_non_negative_float(training, "weight_decay", "training.weight_decay"),
+        # Optional, so a config saved by an older run still loads: no accumulation, as before.
+        accumulate_grad_batches=(
+            _positive_int(training, "accumulate_grad_batches", "training.accumulate_grad_batches")
+            if "accumulate_grad_batches" in training
+            else 1
+        ),
         resume=_bool(training, "resume", "training.resume"),
         baseline_eval=_bool(training, "baseline_eval", "training.baseline_eval"),
         limit_train_batches=_limit(training, "limit_train_batches", "training.limit_train_batches"),
@@ -264,6 +269,7 @@ class StudentSettings:
     seed: int
     gradient_clip: float
     weight_decay: float
+    accumulate_grad_batches: int
     resume: bool
     baseline_eval: bool
     limit_train_batches: int | float
@@ -326,9 +332,7 @@ def load_student_settings(path: Path | None = None) -> StudentSettings:
     config_path = path or CONFIG_PATH
     if not config_path.is_file():
         raise SystemExit(f"Config not found: {config_path}")
-    loaded = yaml.safe_load(config_path.read_text(encoding="utf-8"))
-    if not isinstance(loaded, dict):
-        raise SystemExit(f"{config_path} must be a mapping")
+    loaded = load_config(config_path)
 
     paths = _mapping(loaded, "paths")
     student = _mapping(loaded, "student")
@@ -373,6 +377,12 @@ def load_student_settings(path: Path | None = None) -> StudentSettings:
         seed=_non_negative_int(student, "seed", "student.seed"),
         gradient_clip=_positive_float(student, "gradient_clip", "student.gradient_clip"),
         weight_decay=_non_negative_float(student, "weight_decay", "student.weight_decay"),
+        # Optional, so a config saved by an older run still loads: no accumulation, as before.
+        accumulate_grad_batches=(
+            _positive_int(student, "accumulate_grad_batches", "student.accumulate_grad_batches")
+            if "accumulate_grad_batches" in student
+            else 1
+        ),
         resume=_bool(student, "resume", "student.resume"),
         baseline_eval=_bool(student, "baseline_eval", "student.baseline_eval"),
         limit_train_batches=_limit(student, "limit_train_batches", "student.limit_train_batches"),

@@ -26,9 +26,9 @@
    2. `judge.py`: `--workers` і `--retries` з `pipeline.judge_*`; `--labels` — найновіший `labels.csv` для `pseudo_labelling.teacher_model`;
    3. `plot_marks.py`: `--marks` — найновіший `label_marks.csv` для того самого вчителя;
    4. `plot_metrics.py`: `--model-name` з `model.name`.
-7. Створено `config.vast.yaml` з тими самими ключами, що й `config.yaml`. Відрізняються лише значення, які залежать від машини:
-   1. дані в `/workspace/data/<набір>`, чекпоінти в `/workspace/checkpoints`;
-   2. одна GPU `nvidia0` у `gpus` (це єдине місце вибору GPU для всіх етапів);
+7. Створено `config.vast.yaml`. Він розширює `config.yaml` (`extends: config.yaml`) і містить лише те, що залежить від машини:
+   1. `paths.data_root: /workspace/data` (усі шляхи датасетів у `config.yaml` будуються від нього) і `paths.checkpoints: /workspace/checkpoints`;
+   2. одна GPU `nvidia0` у `gpus` (це єдине місце вибору GPU для всіх етапів), успадкована з `config.yaml`;
    3. `pipeline.language` і `pipeline.timestamps` мають значення `skip`, бо їхні результати вже є в git.
 
 Запуск на інстансі:
@@ -38,7 +38,7 @@ export ASR_CONFIG=config.vast.yaml
 python main.py pipeline --dry-run
 ```
 
-Що лишилось: `config.vast.yaml` треба тримати синхронним із `config.yaml`, коли додаються нові ключі. Якщо ключа бракує, завантажувач конфігу зупиняється з помилкою `missing <key>`, тож розбіжність одразу видно.
+Нові ключі `config.yaml` потрапляють у `config.vast.yaml` автоматично: його не треба синхронізувати вручну. Окремо в ньому пишуть лише відмінності.
 
 ### 1.2. Вибір GPU через `nvidia0`/`nvidia1`
 
