@@ -69,6 +69,9 @@ class _FramePart:
         self.sentences = [self.sentences[index] for index in keep]
         return removed
 
+    def sort_key(self, index: int) -> tuple:
+        return (-len(self.sentences[index]),)
+
     def read(self, index: int) -> tuple[str, torch.Tensor, int]:
         waveform, sample_rate = decode_audio(self.paths[index])
         return self.sentences[index], waveform, sample_rate
@@ -118,6 +121,11 @@ class _ArrowPart:
     def example_id(self, index: int) -> str:
         return self.rows[index][4]
 
+    def sort_key(self, index: int) -> tuple:
+        # Record batch first: reads stay inside the cached batch.
+        file_index, batch_index, _offset, sentence, _example_id = self.rows[index]
+        return (file_index, batch_index, -len(sentence))
+
     def _batch(self, file_index: int, batch_index: int):
         key = (file_index, batch_index)
         if self._cache_key != key:
@@ -159,6 +167,9 @@ class _ZipPart:
 
     def example_id(self, index: int) -> str:
         return self.records[index][3]
+
+    def sort_key(self, index: int) -> tuple:
+        return (-len(self.records[index][2]),)
 
     def read(self, index: int) -> tuple[str, torch.Tensor, int]:
         archive_path, member, sentence, _example_id = self.records[index]
@@ -223,6 +234,11 @@ class _ParquetPart:
         self.rows = keep
         return removed
 
+    def sort_key(self, index: int) -> tuple:
+        # Row group first: reads stay inside the cached row group.
+        file_index, group, _offset, sentence, _example_id = self.rows[index]
+        return (file_index, group, -len(sentence))
+
     def _audio_bytes(self, file_index: int, group: int, offset: int) -> bytes:
         key = (file_index, group)
         if self._cache_key != key:
@@ -276,6 +292,24 @@ class SpeechSplit:
     def read(self, index: int) -> tuple[str, torch.Tensor, int]:
         part, local = self._locate(index)
         return part.read(local)
+
+    def sorted_by_length(self) -> SpeechSplit:
+        """A view of this split, longest label first within each part.
+
+        Arrow and parquet parts sort within each cached batch / row group only,
+        so the order never reloads audio it has just dropped from the cache.
+        """
+        chosen = list(range(self._length) if self._selected is None else self._selected)
+
+        def key(index: int) -> tuple:
+            part_index = 0
+            while part_index + 1 < len(self._offsets) and self._offsets[part_index + 1] <= index:
+                part_index += 1
+            return (part_index, *self.parts[part_index].sort_key(index - self._offsets[part_index]))
+
+        view = SpeechSplit(self.parts, self.sources)
+        view._selected = sorted(chosen, key=key)
+        return view
 
     def take_stride(self, start: int, step: int) -> SpeechSplit:
         chosen = list(range(self._length) if self._selected is None else self._selected)

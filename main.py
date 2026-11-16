@@ -2,6 +2,9 @@
 file named by ``ASR_CONFIG`` (for example ``config.vast.yaml``).
 
     ASR_CONFIG=config.vast.yaml python main.py pipeline
+    python main.py fine-tune --config 1
+        ``--config 1`` (every command) uses ``config_parallel.yaml``: a second
+        run on the other GPU. ``--config 0`` (default) keeps the current config.
 
     python main.py pipeline
         Run the stages in ``pipeline`` in order: language filter, 30-second
@@ -62,6 +65,8 @@ ROOT = Path(__file__).resolve().parent
 # Read by fine-tune/run_meta.py in every child script.
 NOTE_ENV = "ASR_NOTE"
 NOTE_HELP = "Comment for this run, stored in meta.yaml and in results.csv."
+# --config value -> config file. 0 keeps ASR_CONFIG or config.yaml.
+CONFIGS = {1: "config_parallel.yaml"}
 
 
 def _run(script: Path, extra: list[str]) -> None:
@@ -86,7 +91,17 @@ def _present(args: argparse.Namespace, *names: str) -> list[str]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument(
+        "--config",
+        type=int,
+        choices=(0, 1),
+        default=0,
+        help="0: config.yaml (or ASR_CONFIG). 1: config_parallel.yaml, for a second run on the other GPU.",
+    )
     commands = parser.add_subparsers(dest="command", required=True)
+    add_parser = commands.add_parser
+    commands.add_parser = lambda *a, **kw: add_parser(*a, parents=[common], **kw)
 
     pipeline = commands.add_parser("pipeline", help="Run the configured pipeline stages.")
     pipeline.add_argument("--dry-run", action="store_true", help="Print each stage without starting it.")
@@ -161,6 +176,8 @@ def main() -> None:
         "plot": ("model_name", "version", "watch", "interval"),
         "marks": ("marks",),
     }
+    if args.config in CONFIGS:
+        os.environ["ASR_CONFIG"] = CONFIGS[args.config]
     note = (getattr(args, "note", None) or "").strip()
     if note:
         os.environ[NOTE_ENV] = note

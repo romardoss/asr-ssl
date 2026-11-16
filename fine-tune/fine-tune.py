@@ -290,10 +290,15 @@ class WhisperFineTuner(L.LightningModule):
                 self.model.model.encoder.training,
             )
 
-    def _transcribe(self, batch) -> tuple[list[str], list[str]]:
+    def _transcribe(self, batch, encoder_outputs=None) -> tuple[list[str], list[str]]:
+        # With encoder_outputs the encoder pass already done for the loss is reused.
+        inputs = (
+            {"encoder_outputs": encoder_outputs}
+            if encoder_outputs is not None
+            else {"input_features": batch["input_features"], "attention_mask": batch["attention_mask"]}
+        )
         predicted_ids = self.model.generate(
-            batch["input_features"],
-            attention_mask=batch["attention_mask"],
+            **inputs,
             language=self.language,
             task="transcribe",
             num_beams=1,
@@ -311,13 +316,11 @@ class WhisperFineTuner(L.LightningModule):
         return references, hypotheses
 
     def validation_step(self, batch, batch_idx):
-        loss = self.model(
-            input_features=batch["input_features"],
-            attention_mask=batch["attention_mask"],
-            labels=batch["labels"],
-        ).loss
+        # One encoder pass serves both the loss and generation.
+        encoder_outputs = self.model.model.encoder(batch["input_features"], return_dict=True)
+        loss = self.model(encoder_outputs=encoder_outputs, labels=batch["labels"]).loss
         self.log("val_loss", loss, prog_bar=True, on_epoch=True, sync_dist=True)
-        references, hypotheses = self._transcribe(batch)
+        references, hypotheses = self._transcribe(batch, encoder_outputs)
         self.val_references.extend(references)
         self.val_hypotheses.extend(hypotheses)
         return loss
@@ -428,7 +431,8 @@ def main() -> None:
         )
 
     train_loader = make_loader(splits["train"], cfg.train_batch_size, shuffle=True)
-    dev_loader = make_loader(splits["dev"], cfg.testing_after_train_batch_size, shuffle=False)
+    # Longest labels first: a batch of similar lengths does not wait on one long clip, and an OOM shows at once.
+    dev_loader = make_loader(splits["dev"].sorted_by_length(), cfg.testing_after_train_batch_size, shuffle=False)
 
     module = WhisperFineTuner(
         model,
