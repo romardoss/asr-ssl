@@ -204,7 +204,7 @@ def main() -> None:
     )
 
     shards = voa_shards(settings)
-    location = index_shards(shards)
+    location = index_shards(shards, settings.output_dir / "voa_shard_index.json")
     absent = sorted(path for path in pending_paths if path not in location)
     if absent:
         raise SystemExit(f"{len(absent)} audio paths are not in the VOA shards, first: {absent[0]}")

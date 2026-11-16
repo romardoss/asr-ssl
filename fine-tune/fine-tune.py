@@ -490,7 +490,11 @@ def main() -> None:
     if tracker is not None:
         train_meta["mlflow_run_id"] = tracker.run_id
     checkpoint_callback = BatchFractionCheckpoint(
-        ckpt_dir, cfg.model_name, fraction=cfg.checkpoint_every, meta=train_meta
+        ckpt_dir,
+        cfg.model_name,
+        fraction=cfg.checkpoint_every,
+        meta=train_meta,
+        prune=cfg.remove_mid_epoch_checkpoints,
     )
     logger = CSVLogger(save_dir=str(cfg.output_dir), name=cfg.model_name)
     checkpoint_callback.metrics_dir = Path(logger.log_dir)

@@ -7,7 +7,9 @@ whole clip. Audio is decoded and resampled to ``pseudo_labelling.sample_rate``.
 
 from __future__ import annotations
 
+import json
 import subprocess
+import sys
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
@@ -15,7 +17,10 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
+import pyarrow.compute as pc
 import pyarrow.parquet as pq
+from tqdm import tqdm
 
 if TYPE_CHECKING:
     from settings import LabellingSettings
@@ -78,12 +83,40 @@ def voa_shards(settings: LabellingSettings) -> list[Path]:
     return found
 
 
-def index_shards(shards: list[Path]) -> dict[str, Path]:
+def _shard_key(shard: Path) -> list:
+    stat = shard.stat()
+    return [shard.name, stat.st_size, stat.st_mtime_ns]
+
+
+def _shard_paths(shard: Path) -> list[str]:
+    column = pq.read_table(shard, columns=["audio.path"]).column(0)
+    if pa.types.is_struct(column.type):
+        column = pc.struct_field(column, "path")
+    return [str(name) for name in column.to_pylist()]
+
+
+def index_shards(shards: list[Path], cache: Path | None = None) -> dict[str, Path]:
+    """Map every audio path to its shard. ``cache`` keeps the map between runs;
+    it is rebuilt when a shard is added, removed, or changed."""
+    keys = [_shard_key(shard) for shard in shards]
+    if cache is not None and cache.is_file():
+        try:
+            stored = json.loads(cache.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            stored = {}
+        if stored.get("shards") == keys:
+            by_name = {shard.name: shard for shard in shards}
+            return {name: by_name[shard] for name, shard in stored["paths"].items()}
     found: dict[str, Path] = {}
-    for shard in shards:
-        names = pq.read_table(shard, columns=["audio.path"]).column("path").to_pylist()
-        for name in names:
-            found[str(name)] = shard
+    for shard in tqdm(shards, desc="index shards", unit="shard", file=sys.stderr):
+        for name in _shard_paths(shard):
+            found[name] = shard
+    if cache is not None:
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        payload = {"shards": keys, "paths": {name: shard.name for name, shard in found.items()}}
+        temporary = cache.with_suffix(cache.suffix + ".tmp")
+        temporary.write_text(json.dumps(payload), encoding="utf-8")
+        temporary.replace(cache)
     return found
 
 
@@ -129,10 +162,13 @@ def slice_audio(waveform: np.ndarray, segment: Segment, sample_rate: int, max_se
     return np.ascontiguousarray(audio)
 
 
-def iter_shard_audio(shard: Path, needed: set[str]):
+def iter_shard_audio(shard: Path, needed: set[str], batch_size: int = 64):
     parquet = pq.ParquetFile(shard)
-    for batch in parquet.iter_batches(batch_size=1, columns=["audio"]):
-        audio = batch.to_pylist()[0]["audio"]
-        name = str(audio["path"])
-        if name in needed:
-            yield name, audio["bytes"]
+    for batch in parquet.iter_batches(batch_size=batch_size, columns=["audio"]):
+        audio = batch.column("audio")
+        names = audio.field("path").to_pylist()
+        contents = audio.field("bytes")
+        for row, name in enumerate(names):
+            name = str(name)
+            if name in needed:
+                yield name, contents[row].as_py()

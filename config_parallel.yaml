@@ -35,8 +35,9 @@ gpus:
 # Full checkpoint (weights and optimizer) every this fraction of an epoch, for every training stage.
 # 0.25 saves at 25, 50, and 75 %; the end of each epoch is always saved. 1.0: epoch ends only.
 checkpoint_every: 0.25
-# true: a finished training run (fine-tune, student, every multi_step step) deletes its mid-epoch
-# checkpoints and keeps the end of each epoch. false keeps them all.
+# true: during training only the newest mid-epoch checkpoint is kept, and it is deleted once the
+# epoch ends, so only the end of each epoch stays (fine-tune, student, every multi_step step).
+# false keeps them all.
 remove_mid_epoch_checkpoints: true
 
 # MLflow: metrics by step and epoch, params, and artifacts of fine-tune, student, multi_step, and evaluation.

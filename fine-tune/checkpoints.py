@@ -2,9 +2,11 @@
 
 Lightning's ``trainer.save_checkpoint(..., weights_only=False)`` stores the
 model weights together with ``optimizer_states`` and ``lr_schedulers``, so a
-later ``Trainer.fit(ckpt_path=...)`` continues from the same step. When a run
-finishes, ``remove_mid_epoch`` deletes its mid-epoch saves and keeps the end
-of every epoch.
+later ``Trainer.fit(ckpt_path=...)`` continues from the same step. During
+training ``BatchFractionCheckpoint`` keeps only the newest mid-epoch save and
+deletes all of them once the epoch ends. When a run finishes,
+``remove_mid_epoch`` deletes any mid-epoch saves left and keeps the end of
+every epoch.
 """
 
 from __future__ import annotations
@@ -162,13 +164,23 @@ class BatchFractionCheckpoint(L.Callback):
     """Save a full training checkpoint every ``fraction`` of an epoch, and at epoch end.
 
     Filenames carry the model name, the epoch, and the batch percentage, for
-    example ``model-whisper-uk-epoch00-batch25pct.ckpt``.
+    example ``model-whisper-uk-epoch00-batch25pct.ckpt``. With ``prune``, every
+    save deletes the older mid-epoch files: inside an epoch only the newest
+    mid-epoch save stays, and after the epoch end only epoch-end saves remain.
     """
 
-    def __init__(self, dirpath: Path, model_name: str, fraction: float = 0.05, meta: dict | None = None):
+    def __init__(
+        self,
+        dirpath: Path,
+        model_name: str,
+        fraction: float = 0.05,
+        meta: dict | None = None,
+        prune: bool = False,
+    ):
         self.dirpath = Path(dirpath)
         self.model_name = model_name
         self.fraction = fraction
+        self.prune = prune
         self.meta = dict(meta or {})
         self.metrics_dir: Path | None = None
         self._targets: dict[int, int] = {}
@@ -233,6 +245,8 @@ class BatchFractionCheckpoint(L.Callback):
             if last.is_symlink() or last.exists():
                 last.unlink()
             last.symlink_to(path.name)
+            if self.prune:
+                self._prune_mid_epoch(keep=path)
             payload = dict(self.meta)
             payload["checkpoint"] = path.name
             payload["epoch"] = int(epoch)
@@ -242,3 +256,9 @@ class BatchFractionCheckpoint(L.Callback):
                 payload["batch_percent"] = int(batch_percent)
             self._publish(payload)
         trainer.strategy.barrier()
+
+    def _prune_mid_epoch(self, keep: Path) -> None:
+        """Delete every mid-epoch checkpoint in the directory except ``keep``."""
+        for old in self.dirpath.glob("*.ckpt"):
+            if old.name != keep.name and not old.is_symlink() and MID_EPOCH.search(old.name):
+                old.unlink(missing_ok=True)
