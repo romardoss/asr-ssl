@@ -12,8 +12,9 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.append(str(ROOT))
+for _path in (ROOT, Path(__file__).resolve().parent):
+    if str(_path) not in sys.path:
+        sys.path.append(str(_path))
 
 from project_config import CONFIG_PATH, configured_gpu, find_labelling_file, labelling_runs, load_config  # noqa: E402,F401
 from dataset_roles import check_names  # noqa: E402
