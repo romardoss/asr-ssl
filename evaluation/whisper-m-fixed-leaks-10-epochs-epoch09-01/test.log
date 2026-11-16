@@ -1,0 +1,37 @@
+2026-11-17 08:46:32,807 INFO model=/mnt/data/rberehun/checkpoints/model-whisper-m-fixed-leaks-10-epochs_01/model-whisper-m-fixed-leaks-10-epochs-epoch09.ckpt kind=ckpt gpus=['nvidia0'] CUDA_VISIBLE_DEVICES=0 testing_batch=64
+2026-11-17 08:46:34,689 INFO test clips: 18345 (common_voice 10956, fleurs 750, ukr_dialects 3435, cv10_test 3204)
+2026-11-17 08:46:35,364 INFO HTTP Request: GET https://huggingface.co/api/models/openai/whisper-medium/revision/main "HTTP/1.1 200 OK"
+2026-11-17 08:46:35,508 INFO HTTP Request: GET https://huggingface.co/api/models/openai/whisper-medium/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-11-17 08:46:35,665 INFO HTTP Request: GET https://huggingface.co/api/models/openai/whisper-medium/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-11-17 08:46:35,814 INFO HTTP Request: GET https://huggingface.co/api/models/openai/whisper-medium/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
+2026-11-17 08:46:36,163 INFO HTTP Request: GET https://huggingface.co/api/models/openai/whisper-medium/revision/main "HTTP/1.1 200 OK"
+2026-11-17 08:47:22,750 INFO cuda:0 batch 1/287
+2026-11-17 08:48:36,414 INFO cuda:0 batch 20/287
+2026-11-17 08:49:54,785 INFO cuda:0 batch 40/287
+2026-11-17 08:51:11,713 INFO cuda:0 batch 60/287
+2026-11-17 08:52:27,680 INFO cuda:0 batch 80/287
+2026-11-17 08:53:46,819 INFO cuda:0 batch 100/287
+2026-11-17 08:55:06,378 INFO cuda:0 batch 120/287
+2026-11-17 08:56:27,807 INFO cuda:0 batch 140/287
+2026-11-17 08:57:49,665 INFO cuda:0 batch 160/287
+2026-11-17 08:59:28,637 INFO cuda:0 batch 180/287
+2026-11-17 09:01:38,048 INFO cuda:0 batch 200/287
+2026-11-17 09:03:23,746 INFO cuda:0 batch 220/287
+2026-11-17 09:06:04,705 INFO cuda:0 batch 240/287
+2026-11-17 09:07:28,932 INFO cuda:0 batch 260/287
+2026-11-17 09:08:45,028 INFO cuda:0 batch 280/287
+2026-11-17 09:09:15,833 INFO loss 0.8212
+2026-11-17 09:09:15,833 INFO test combined_weighted {'wer': 0.25159925265098554, 'cer': 0.11584675396692692, 'mer': 0.24257679689830003, 'wil': 0.37797635110175476, 'wip': 0.6220236488982452, 'substitutions': 27380.0, 'deletions': 7276.0, 'insertions': 6012.0, 'hits': 126982.0, 'n': 18345.0, 'clips': 18345.0}
+2026-11-17 09:09:15,833 INFO test combined_mean {'wer': 0.23566583058784038, 'cer': 0.11814253900312238, 'mer': 0.21965889158177507, 'wil': 0.32386098490302956, 'wip': 0.6761390150969704, 'datasets': 4.0, 'clips': 18345.0}
+2026-11-17 09:09:15,833 INFO test common_voice {'wer': 0.10288739905531007, 'cer': 0.027447730171783036, 'mer': 0.10183102308572003, 'wil': 0.1754738181622748, 'wip': 0.8245261818377252, 'substitutions': 6374.0, 'deletions': 912.0, 'insertions': 817.0, 'hits': 71470.0, 'n': 10956.0, 'clips': 10956.0}
+2026-11-17 09:09:15,833 INFO test fleurs {'wer': 0.13567276038383413, 'cer': 0.06385500826652525, 'mer': 0.13313629802735583, 'wil': 0.22609237314116992, 'wip': 0.7739076268588301, 'substitutions': 1512.0, 'deletions': 153.0, 'insertions': 272.0, 'hits': 12612.0, 'n': 750.0, 'clips': 750.0}
+2026-11-17 09:09:15,833 INFO test ukr_dialects {'wer': 0.6352326394962393, 'cer': 0.36429439032250066, 'mer': 0.575261365436401, 'wil': 0.7736630960257658, 'wip': 0.2263369039742342, 'substitutions': 18232.0, 'deletions': 6053.0, 'insertions': 4768.0, 'hits': 21451.0, 'n': 3435.0, 'clips': 3435.0}
+2026-11-17 09:09:15,833 INFO test cv10_test {'wer': 0.06887052341597796, 'cer': 0.016973027251680567, 'mer': 0.06840687977762334, 'wil': 0.12021465228290773, 'wip': 0.8797853477170923, 'substitutions': 1262.0, 'deletions': 158.0, 'insertions': 155.0, 'hits': 21449.0, 'n': 3204.0, 'clips': 3204.0}
+2026-11-17 09:09:15,834 INFO wrote /home/rberehun/asr-ssl/evaluation/whisper-m-fixed-leaks-10-epochs-epoch09-01/results.json
+2026-11-17 09:09:15,834 INFO wrote /home/rberehun/asr-ssl/evaluation/whisper-m-fixed-leaks-10-epochs-epoch09-01/predictions.csv
+2026-11-17 09:09:15,834 INFO wrote /home/rberehun/asr-ssl/evaluation/whisper-m-fixed-leaks-10-epochs-epoch09-01/plots/error_rates.png
+2026-11-17 09:09:15,834 INFO wrote /home/rberehun/asr-ssl/evaluation/whisper-m-fixed-leaks-10-epochs-epoch09-01/plots/edit_counts.png
+2026-11-17 09:09:15,834 INFO wrote /home/rberehun/asr-ssl/evaluation/whisper-m-fixed-leaks-10-epochs-epoch09-01/plots/utterance_wer.png
+2026-11-17 09:09:15,834 INFO wrote /home/rberehun/asr-ssl/evaluation/whisper-m-fixed-leaks-10-epochs-epoch09-01/plots/error_rates_by_dataset.png
+2026-11-17 09:09:15,842 INFO updated /home/rberehun/asr-ssl/evaluation/results.csv
+2026-11-17 09:09:18,367 INFO MLflow evaluation run 378329badda54754b4e4ab9ebf8648e5

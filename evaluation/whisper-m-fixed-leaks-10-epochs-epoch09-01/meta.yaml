@@ -1,0 +1,17 @@
+stage: fine-tune
+train_data:
+- common_voice
+cv_train_rows: 62460
+learning_rate: 1.0e-05
+max_epochs: 10
+precision: bf16-mixed
+seed: 42
+model: model-whisper-m-fixed-leaks-10-epochs
+checkpoint: model-whisper-m-fixed-leaks-10-epochs-epoch09.ckpt
+epoch: 9
+checkpoint_dir: /mnt/data/rberehun/checkpoints/model-whisper-m-fixed-leaks-10-epochs_01
+base_model: openai/whisper-medium
+language: uk
+evaluated_at: '2026-11-17 08:46:32'
+git_commit: '2330074'
+note: whisper-m with fixed leaks 10 epochs on cv

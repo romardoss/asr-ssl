@@ -1,0 +1,18 @@
+stage: fine-tune
+train_data:
+- common_voice
+- fleurs
+cv_train_rows: 62460
+learning_rate: 1.0e-05
+max_epochs: 5
+precision: bf16-mixed
+seed: 42
+model: model-whisper-m-fixed-leaks-5-epochs+fleurs
+checkpoint: model-whisper-m-fixed-leaks-5-epochs+fleurs-epoch00.ckpt
+epoch: 0
+checkpoint_dir: /mnt/data/rberehun/checkpoints/model-whisper-m-fixed-leaks-5-epochs+fleurs_01
+base_model: openai/whisper-medium
+language: uk
+evaluated_at: '2026-11-16 18:08:51'
+git_commit: 918098b
+note: whisper-m with fixed leaks 5 epochs on cv+fleurs

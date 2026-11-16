@@ -89,12 +89,12 @@ data:
   # common_voice, fleurs, and ukr_dialects have train, dev, and test.
   # opentts and tg_voices are train only. cv10_test is test only.
   # Broadcast Speech and YODAS2 stay out: their labels are unreliable.
-  train: [common_voice, fleurs]
-  dev: [common_voice, fleurs]
+  train: [common_voice]
+  dev: [common_voice]
   test: [common_voice, fleurs, ukr_dialects, cv10_test]
 
 pseudo_labelling:
-  teacher_model: ${paths.checkpoints}/model-whisper-uk/model-whisper-uk-epoch00.ckpt
+  teacher_model: ${paths.checkpoints}/model-whisper-m-fixed-leaks-5-epochs_01/model-whisper-m-fixed-leaks-5-epochs-epoch04.ckpt
   voa: ${paths.voa}
   ukrainian_meta: datasets/voa-ukr/ukrainian.csv
   timestamps: datasets/voa-ukr/ukrainian_30s.csv
@@ -111,7 +111,7 @@ student:
   # Not listed here, so taken from training (and batch_size.train): learning_rate, warmup_steps, max_epochs,
   # num_workers, precision, seed, gradient_clip, weight_decay, accumulate_grad_batches, resume, val_every,
   # limit_train_batches, limit_val_batches, batch_size.train. Set one here to give the student its own value.
-  name: student_whisper-commonvoice-based
+  name: student_whisper-fixed-leaks
   base: openai/whisper-medium
   init: openai/whisper-medium
   # latest uses the newest labels.csv / label_marks.csv for pseudo_labelling.teacher_model
@@ -119,7 +119,7 @@ student:
   labels: latest
   # false trains on every non-empty label and does not read marks
   filter_marks: true
-  accepted_mark: [3]
+  accepted_mark: [3, 4, 5]
   # Labelled train sets (data.train names) trained in the same run after the pseudo-labels:
   # each epoch ends on them. accepted_mark does not apply to them. Empty: pseudo-labels only.
   extra_train: []
@@ -128,7 +128,7 @@ student:
   language: uk
   eval_data: common_voice
   batch_size:
-    eval: 8
+    eval: 16
   baseline_eval: false
   limit_test_batches: 1.0
   max_audio_seconds: 30.0
@@ -195,8 +195,8 @@ voa_prep:
 pipeline:
   language: skip_if_present
   timestamps: skip_if_present
-  label: skip_if_present
-  clean: skip
+  label: run
+  clean: run
   # The multi_step chain (section above) replaces the single student run, so student and its evaluate are off.
   student: skip
   evaluate: skip

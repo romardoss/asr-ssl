@@ -23,7 +23,7 @@ paths:
 model:
   id: openai/whisper-medium
   # Own checkpoint folder: with training.resume the old model-whisper-uk run would be resumed.
-  name: model-whisper-m-fixed-leaks-5-epochs+fleurs
+  name: model-whisper-m-fixed-leaks-10-epochs
   language: uk
 
 # The one GPU of every stage: fine-tune, student, multi_step, evaluation, labelling, language ID.
@@ -64,7 +64,7 @@ batch_size:
 training:
   learning_rate: 0.00001
   warmup_steps: 50
-  max_epochs: 5
+  max_epochs: 10
   num_workers: 4
   # bf16-mixed: bf16 compute, fp32 weights and AdamW state. bf16-true rounds updates of lr 1e-5 away.
   precision: bf16-mixed
@@ -89,8 +89,8 @@ data:
   # common_voice, fleurs, and ukr_dialects have train, dev, and test.
   # opentts and tg_voices are train only. cv10_test is test only.
   # Broadcast Speech and YODAS2 stay out: their labels are unreliable.
-  train: [common_voice, fleurs]
-  dev: [common_voice, fleurs]
+  train: [common_voice]
+  dev: [common_voice]
   test: [common_voice, fleurs, ukr_dialects, cv10_test]
 
 pseudo_labelling:
