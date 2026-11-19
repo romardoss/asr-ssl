@@ -1,0 +1,11 @@
+run,wer_combined_no_cv10,cer_combined_no_cv10,clips
+baseline/original-whisper-medium,37.3354,17.953,15141
+baseline/common-voice-only-baseline,34.0616,14.3591,15141
+student_mix-m345-cv-m5-cv-s1-pseudo-m345-common_voice-epoch00-01,31.1799,13.5966,15141
+student_mix-m345-cv-m5-cv-s2-pseudo-m5-common_voice-epoch00-01,34.9833,16.3676,15141
+student_mix-m2345-cv-m45-cv-s1-pseudo-m2345-common_voice-epoch00-01,33.0614,15.1486,15141
+student_mix-m2345-cv-m45-cv-s2-pseudo-m45-common_voice-epoch00-01,32.8885,15.2987,15141
+whisper-uk-cv-fixed-epoch00-01,32.8503,14.805,15141
+whisper-m-fixed-leaks-5-epochs-epoch00-01,34.9646,16.0784,15141
+whisper-m-fixed-leaks-5-epochs-epoch04-01,29.3963,13.9181,15141
+whisper-m-fixed-leaks-10-epochs-epoch09-01,28.1713,13.3536,15141

@@ -11,3 +11,7 @@ git add . && git commit -m "" && git push
 DIR=/mnt/data/rberehun/checkpoints/model-whisper-uk_01
 ls -lh "$DIR"/*-epoch[0-9][0-9]-batch[0-9]*pct.ckpt && du -sh "$DIR"   # що буде видалено
 case "$(readlink "$DIR/last.ckpt")" in *-batch*pct.ckpt) echo "last.ckpt -> проміжний чекпоінт, не видаляю";; *) rm -v "$DIR"/*-epoch[0-9][0-9]-batch[0-9]*pct.ckpt && du -sh "$DIR";; esac
+
+
+# download output
+rsync -avh --progress monitor:~/asr-ssl/output/ /home/romardoss/asr/asr_ssl/output/
