@@ -56,6 +56,8 @@ import av
 import jiwer
 import lightning as L
 import numpy as np
+import pyarrow as pa
+import pyarrow.compute as pc
 import pyarrow.parquet as pq
 import torch
 import torchaudio
@@ -192,7 +194,11 @@ def voa_shards(root: Path) -> list[Path]:
 def locate_slices(shards: list[Path], needed: set[str]) -> dict[str, tuple[Path, int]]:
     def one(shard: Path) -> list[tuple[str, int]]:
         parquet = pq.ParquetFile(shard)
-        names = pq.read_table(shard, columns=["audio.path"]).column("path").to_pylist()
+        # ParquetFile.read reads only the path leaf; pq.read_table pulls the whole audio struct, bytes too.
+        column = parquet.read(columns=["audio.path"]).column(0)
+        if pa.types.is_struct(column.type):
+            column = pc.struct_field(column, "path")
+        names = column.to_pylist()
         hits: list[tuple[str, int]] = []
         offset = 0
         for row_group in range(parquet.metadata.num_row_groups):

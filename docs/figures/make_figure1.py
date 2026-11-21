@@ -32,15 +32,14 @@ TEXT = "#0b0b0b"
 MUTED = "#52514e"
 GRID = "#e4e3de"
 
-# (run у results.csv, підпис, колір, штрих: результат-орієнтир, не порівнюваний напряму)
+# (run у results.csv, підпис, колір, штрих: вихідна модель без донавчання)
 MODELS = [
-    ("baseline/original-whisper-medium", "Whisper Medium", "#8c8a84", False),
+    ("baseline/original-whisper-medium", "Whisper Medium", "#8c8a84", True),
     ("baseline/common-voice-only-baseline", "Вчитель Т0", "#3d3c39", False),
     ("student_mix-m345-cv-m5-cv-s1-pseudo-m345-common_voice-epoch00-01",
      "Студент, ПМ 3–5", "#2a78d6", False),
     ("student_mix-m345-cv-m5-cv-s2-pseudo-m5-common_voice-epoch00-01",
      "Студент, ПМ 5", "#eb6834", False),
-    ("whisper-m-fixed-leaks-5-epochs-epoch04-01", "CV-only, 5 епох (орієнтир)", "#1baf7a", True),
 ]
 Y_STEP = {"wer": 20, "cer": 10}  # крок поділок; верхня межа — максимум, округлений угору до кроку
 SETS = [
@@ -56,7 +55,7 @@ combined = pd.read_csv(Path(__file__).with_name("combined_without_cv10.csv")).se
 df = df.join(combined[["wer_combined_no_cv10", "cer_combined_no_cv10"]])
 
 fig, axes = plt.subplots(1, 2, figsize=(17 / 2.54, 7.2 / 2.54), sharey=False)
-width = 0.16
+width = 0.19
 offsets = [(i - (len(MODELS) - 1) / 2) * width for i in range(len(MODELS))]
 plt.rcParams["hatch.linewidth"] = 0.7
 
@@ -87,8 +86,8 @@ for ax, metric in ((axes[0], "wer"), (axes[1], "cer")):
 
 handles = [Patch(facecolor=c, edgecolor="white", hatch="////" if h else None, label=l)
            for _, l, c, h in MODELS]
-fig.legend(handles=handles, loc="lower center", ncol=3, frameon=False,
+fig.legend(handles=handles, loc="lower center", ncol=4, frameon=False,
            bbox_to_anchor=(0.5, -0.01), handlelength=1.2, handletextpad=0.4, columnspacing=1.4)
-fig.tight_layout(rect=(0, 0.17, 1, 1), w_pad=2.0)
+fig.tight_layout(rect=(0, 0.1, 1, 1), w_pad=2.0)
 fig.savefig(OUT, dpi=300, facecolor="white")
 print(OUT)

@@ -89,7 +89,8 @@ def _shard_key(shard: Path) -> list:
 
 
 def _shard_paths(shard: Path) -> list[str]:
-    column = pq.read_table(shard, columns=["audio.path"]).column(0)
+    # ParquetFile.read reads only the path leaf; pq.read_table pulls the whole audio struct, bytes too.
+    column = pq.ParquetFile(shard).read(columns=["audio.path"]).column(0)
     if pa.types.is_struct(column.type):
         column = pc.struct_field(column, "path")
     return [str(name) for name in column.to_pylist()]
