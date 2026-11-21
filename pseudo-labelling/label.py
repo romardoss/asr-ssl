@@ -36,7 +36,7 @@ COMPLETE_NAME = "complete"
 # ffmpeg runs in its own process, so threads decode in parallel while the GPU generates.
 DECODE_WORKERS = min(8, os.cpu_count() or 1)
 # Files decoded ahead of the one being labelled; bounds the waveforms held in memory.
-DECODE_AHEAD = 2 * DECODE_WORKERS
+DECODE_AHEAD = 64
 
 
 def pin_gpus(settings: LabellingSettings) -> None:
@@ -118,6 +118,8 @@ def transcribe(model, processor, waveforms: list, settings: LabellingSettings) -
         sampling_rate=settings.sample_rate,
         return_tensors="pt",
         return_attention_mask=True,
+        # log-mel on the GPU (torch STFT); in numpy it runs on one CPU core while the GPU waits.
+        device=str(model.device),
     )
     features = extracted.input_features.to(model.device, dtype=model.dtype)
     mask = extracted.attention_mask.to(model.device)
