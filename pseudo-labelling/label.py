@@ -15,7 +15,8 @@ import csv
 import json
 import os
 import sys
-from collections import defaultdict
+from collections import defaultdict, deque
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from preprocess import (
@@ -32,6 +33,10 @@ from settings import LabellingSettings, load_labelling
 
 LABELS_NAME = "labels.csv"
 COMPLETE_NAME = "complete"
+# ffmpeg runs in its own process, so threads decode in parallel while the GPU generates.
+DECODE_WORKERS = min(8, os.cpu_count() or 1)
+# Files decoded ahead of the one being labelled; bounds the waveforms held in memory.
+DECODE_AHEAD = 2 * DECODE_WORKERS
 
 
 def pin_gpus(settings: LabellingSettings) -> None:
@@ -114,7 +119,7 @@ def transcribe(model, processor, waveforms: list, settings: LabellingSettings) -
         return_tensors="pt",
         return_attention_mask=True,
     )
-    features = extracted.input_features.to(model.device)
+    features = extracted.input_features.to(model.device, dtype=model.dtype)
     mask = extracted.attention_mask.to(model.device)
     use_bf16 = settings.precision.startswith("bf16")
     with torch.inference_mode(), torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=use_bf16):
@@ -125,6 +130,7 @@ def transcribe(model, processor, waveforms: list, settings: LabellingSettings) -
             task=settings.task,
             num_beams=1,
             do_sample=False,
+            use_cache=True,
         )
     return processor.tokenizer.batch_decode(predicted, skip_special_tokens=True, clean_up_tokenization_spaces=False)
 
@@ -133,6 +139,22 @@ def timestamp_text(segment: Segment) -> str:
     if segment.start is None or segment.end is None:
         return ""
     return f"{segment.start:.3f}-{segment.end:.3f}"
+
+
+def decoded_files(by_shard: dict[Path, set[str]], sample_rate: int, shards_bar):
+    """Yield ``(audio_path, waveform)`` in shard order, decoding the next files in a thread pool."""
+    pending: deque = deque()
+    with ThreadPoolExecutor(max_workers=DECODE_WORKERS) as pool:
+        for shard, names in by_shard.items():
+            for audio_path, audio_bytes in iter_shard_audio(shard, names):
+                pending.append((audio_path, pool.submit(decode, audio_bytes, sample_rate)))
+                if len(pending) > DECODE_AHEAD:
+                    audio_path, future = pending.popleft()
+                    yield audio_path, future.result()
+            shards_bar.update(1)
+        while pending:
+            audio_path, future = pending.popleft()
+            yield audio_path, future.result()
 
 
 def flush_batch(model, processor, settings: LabellingSettings, labels_path: Path, batch_audio: list, batch_rows: list[dict]) -> int:
@@ -157,13 +179,13 @@ def main() -> None:
 
     torch.set_float32_matmul_precision("high")
     model, processor = load_teacher(settings)
-    model.config.use_cache = False
     model.generation_config.language = settings.language
     model.generation_config.task = settings.task
     model.generation_config.forced_decoder_ids = None
     device = torch.device("cuda", 0)
     torch.cuda.set_device(device)
-    model.to(device)
+    # bf16 weights: half the memory and faster than fp32 weights under autocast; no gradients here.
+    model.to(device, dtype=torch.bfloat16 if settings.precision.startswith("bf16") else torch.float32)
     model.eval()
 
     allowed = ukrainian_paths(settings)
@@ -216,40 +238,40 @@ def main() -> None:
     batch_audio: list = []
     batch_rows: list[dict] = []
     files = tqdm(total=len(pending_paths), desc="files", unit="file", position=1, file=sys.stderr)
-    for shard, names in tqdm(by_shard.items(), desc="shards", unit="shard", position=0, file=sys.stderr):
-        for audio_path, audio_bytes in iter_shard_audio(shard, names):
-            files.set_postfix_str(audio_path, refresh=False)
-            waveform = decode(audio_bytes, settings.sample_rate)
-            for segment in by_path[audio_path]:
-                if segment.id in done:
-                    continue
-                audio = slice_audio(waveform, segment, settings.sample_rate, settings.max_audio_seconds)
-                if audio.size == 0:
-                    append_labels(
-                        labels_path,
-                        [{
-                            "ID": segment.id,
-                            "path": segment.path,
-                            "timestamp": timestamp_text(segment),
-                            "text": "",
-                        }],
-                    )
-                    labelled += 1
-                    continue
-                batch_audio.append(audio)
-                batch_rows.append(
-                    {
+    shards_bar = tqdm(total=len(by_shard), desc="shards", unit="shard", position=0, file=sys.stderr)
+    for audio_path, waveform in decoded_files(by_shard, settings.sample_rate, shards_bar):
+        files.set_postfix_str(audio_path, refresh=False)
+        for segment in by_path[audio_path]:
+            if segment.id in done:
+                continue
+            audio = slice_audio(waveform, segment, settings.sample_rate, settings.max_audio_seconds)
+            if audio.size == 0:
+                append_labels(
+                    labels_path,
+                    [{
                         "ID": segment.id,
                         "path": segment.path,
                         "timestamp": timestamp_text(segment),
                         "text": "",
-                    }
+                    }],
                 )
-                if len(batch_audio) == settings.batch_size:
-                    labelled += flush_batch(model, processor, settings, labels_path, batch_audio, batch_rows)
-            files.update(1)
+                labelled += 1
+                continue
+            batch_audio.append(audio)
+            batch_rows.append(
+                {
+                    "ID": segment.id,
+                    "path": segment.path,
+                    "timestamp": timestamp_text(segment),
+                    "text": "",
+                }
+            )
+            if len(batch_audio) == settings.batch_size:
+                labelled += flush_batch(model, processor, settings, labels_path, batch_audio, batch_rows)
+        files.update(1)
     labelled += flush_batch(model, processor, settings, labels_path, batch_audio, batch_rows)
     files.close()
+    shards_bar.close()
     (destination / COMPLETE_NAME).write_text("ok\n", encoding="utf-8")
     print(f"labelled {labelled} new slices -> {labels_path}", flush=True)
 
