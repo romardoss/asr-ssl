@@ -195,7 +195,7 @@ voa_prep:
 pipeline:
   language: skip_if_present
   timestamps: skip_if_present
-  label: run
+  label: skip_if_present
   clean: run
   # The multi_step chain (section above) replaces the single student run, so student and its evaluate are off.
   student: skip
@@ -209,7 +209,7 @@ pipeline:
   judge_retries: 3
   # OpenRouter chat model. The API key stays in .env. Empty is allowed only when clean does not run,
   # or when USE_DECISION_INSTEAD_OF_LLM=true: the judge then uses OPENROUTER_DECISION_MODEL (decisions.py).
-  judge_model: ""
+  judge_model: "google/gemma-4-26b-a4b-it"
 
 # scripts/vast/download_data.py: Hugging Face dataset repos for the local paths above.
 # Public repos already have the layout the code reads. private_repo holds what is not
