@@ -22,6 +22,7 @@ python main.py pipeline --dry-run              # показати етапи п�
 python main.py fine-tune --note "коментар"     # навчити вчителя й оцінити його
 python main.py pipeline --note "коментар"      # псевдомітки -> студент -> оцінка
 python main.py multi-step --dry-run           # план багатокрокового навчання з multi_step
+python main.py cache-voa --all                 # один раз декодувати VOA-фрагменти в student.voa_cache (int16, 16 кГц), щоб студент не ганяв ffmpeg
 python main.py evaluate --model /path/to.ckpt  # оцінити один чекпоінт
 python main.py judge --backend decisions       # оцінити псевдомітки decision-моделлю
 ```

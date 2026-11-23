@@ -21,6 +21,10 @@ file named by ``ASR_CONFIG`` (for example ``config.vast.yaml``).
         Fine-tune a student decoder on VOA slices and their pseudo-labels.
         Dev and the final test are Common Voice. Then the first-epoch and
         the final checkpoint are evaluated, as after fine-tune.
+    python main.py cache-voa
+        Decode the student's VOA slices once into ``student.voa_cache``
+        (int16, 16 kHz), so training reads them instead of running ffmpeg.
+        ``--all`` caches every labelled slice, not only ``accepted_mark``.
     python main.py multi-step
         Run the fine-tuning chain in ``multi_step`` (for example pseudo-labels
         -> Common Voice -> pseudo-labels -> Common Voice). Each step starts
@@ -111,6 +115,9 @@ def main() -> None:
     fine_tune.add_argument("--note", default=None, help=NOTE_HELP)
     student = commands.add_parser("student", help="Fine-tune the student on VOA pseudo-labels.")
     student.add_argument("--note", default=None, help=NOTE_HELP)
+    cache_voa = commands.add_parser("cache-voa", help="Decode the student's VOA slices into student.voa_cache.")
+    cache_voa.add_argument("--all", action="store_true", help="Every labelled slice, not only accepted_mark.")
+    cache_voa.add_argument("--workers", type=int, default=None, help="Parallel ffmpeg decoders. Default: CPU count.")
     multi_step = commands.add_parser("multi-step", help="Run the multi_step fine-tuning chain.")
     multi_step.add_argument("--dry-run", action="store_true", help="Print the steps and commands without running them.")
     multi_step.add_argument("--note", default=None, help=NOTE_HELP)
@@ -159,6 +166,7 @@ def main() -> None:
         "fine-tune": ROOT / "fine-tune" / "fine-tune.py",
         "student": ROOT / "fine-tune" / "fine-tune-student.py",
         "multi-step": ROOT / "fine-tune" / "multi_step.py",
+        "cache-voa": ROOT / "fine-tune" / "cache_voa.py",
         "evaluate": ROOT / "evaluation" / "evaluate.py",
         "label": ROOT / "pseudo-labelling" / "label.py",
         "judge": ROOT / "pseudo-labelling" / "llm-as-a-judge" / "judge.py",
@@ -170,6 +178,7 @@ def main() -> None:
         "fine-tune": (),
         "student": (),
         "multi-step": ("dry_run",),
+        "cache-voa": ("all", "workers"),
         "evaluate": ("model",),
         "label": (),
         "judge": ("labels", "max_examples", "workers", "retries", "backend", "test"),

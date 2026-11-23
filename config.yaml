@@ -12,6 +12,8 @@ paths:
   ukr_dialects: ${paths.data_root}/ukr-dialects
   cv10_test: ${paths.data_root}/cv10-uk-testset-clean
   voa: ${paths.data_root}/voa-ukr
+  # Decoded VOA slices (int16, 16 kHz) from python main.py cache-voa; the student reads them instead of the mp3.
+  voa_cache: ${paths.data_root}/voa-ukr-16k
   checkpoints: ${paths.data_root}/checkpoints
   # Common Voice split TSVs (train_validated, dev, test, unlabelled). Clips stay under common_voice/clips.
   common_voice_splits: datasets/common-voice/raw
@@ -126,6 +128,8 @@ student:
   # each epoch ends on them. accepted_mark does not apply to them. Empty: pseudo-labels only.
   extra_train: []
   voa: ${paths.voa}
+  # Missing slices (or no cache) are decoded from the mp3 with ffmpeg as before.
+  voa_cache: ${paths.voa_cache}
   sample_rate: 16000
   language: uk
   eval_data: common_voice

@@ -44,14 +44,12 @@ def _pin_gpus() -> tuple[int, ...]:
 
 PHYSICAL_GPUS = _pin_gpus()
 
-import csv
 import json
 import logging
 import random
 import re
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
 
 import av
 import jiwer
@@ -80,22 +78,14 @@ from settings import load_settings
 from speech_data import SpeechSplit, load_train_split
 
 sys.path.insert(0, str(ROOT / "pseudo-labelling"))
-from preprocess import Segment, decode, parse_timestamp, slice_audio
+from preprocess import Segment, decode, slice_audio
+from voa_slices import SliceExample, accepted_ids, cache_file, load_slices, read_cached, usable_cache
 
 MAX_AUDIO_SECONDS = SETTINGS.max_audio_seconds
 MAX_LABEL_TOKENS = SETTINGS.max_label_tokens
 
 _PUNCTUATION = re.compile(r"[^\w\s']+", flags=re.UNICODE)
 _SPACES = re.compile(r"\s+")
-
-
-@dataclass(frozen=True)
-class SliceExample:
-    id: str
-    path: str
-    start: float | None
-    end: float | None
-    text: str
 
 
 def normalize_text(text: str) -> str:
@@ -143,46 +133,6 @@ def load_waveform(path: str) -> tuple[torch.Tensor, int]:
         else:
             audio = audio.astype(np.float32)
     return torch.from_numpy(np.ascontiguousarray(audio)), sample_rate
-
-
-def accepted_ids(path: Path, marks: tuple[int, ...]) -> set[str]:
-    if not path.is_file():
-        raise SystemExit(f"Marks file not found: {path}")
-    accepted = set(marks)
-    latest: dict[str, int] = {}
-    with path.open(encoding="utf-8", newline="") as handle:
-        for row in csv.DictReader(handle):
-            latest[row["ID"]] = int(row["mark"])
-    return {label_id for label_id, score in latest.items() if score in accepted}
-
-
-def load_slices(labels_path: Path, wanted: set[str] | None) -> list[SliceExample]:
-    if not labels_path.is_file():
-        raise SystemExit(f"Labels file not found: {labels_path}")
-    found: dict[str, SliceExample] = {}
-    present: set[str] = set()
-    empty = 0
-    with labels_path.open(encoding="utf-8", newline="") as handle:
-        for row in csv.DictReader(handle):
-            label_id = row["ID"]
-            present.add(label_id)
-            if wanted is not None and label_id not in wanted:
-                continue
-            if label_id in found:
-                continue
-            text = row["text"].strip()
-            if not text:
-                empty += 1
-                continue
-            start, end = parse_timestamp(row["timestamp"])
-            found[label_id] = SliceExample(label_id, row["path"], start, end, text)
-    if empty:
-        print(f"skipped {empty} accepted labels with empty text", flush=True)
-    if wanted is not None:
-        absent = [label_id for label_id in wanted if label_id not in present]
-        if absent:
-            raise SystemExit(f"{len(absent)} accepted ids are missing from {labels_path}, first: {absent[0]}")
-    return list(found.values())
 
 
 def voa_shards(root: Path) -> list[Path]:
@@ -319,9 +269,12 @@ class VoaSliceDataset(Dataset):
         processor: WhisperProcessor,
         lang_token_id: int,
         sample_rate: int,
+        cached: list[Path | None] | None = None,
     ):
         self.examples = examples
         self.locations = locations
+        # Per example: its decoded slice in student.voa_cache, or None to decode the mp3.
+        self.cached = cached or [None] * len(examples)
         self.tokenizer = processor.tokenizer
         self.sample_rate = sample_rate
         transcribe_id = self.tokenizer.convert_tokens_to_ids("<|transcribe|>")
@@ -351,12 +304,16 @@ class VoaSliceDataset(Dataset):
 
     def __getitem__(self, index: int) -> dict:
         example = self.examples[index]
-        audio = slice_audio(
-            self._waveform(example),
-            Segment(example.id, example.path, example.start, example.end),
-            self.sample_rate,
-            MAX_AUDIO_SECONDS,
-        )
+        cached = self.cached[index]
+        if cached is not None:
+            audio = read_cached(cached)[: int(round(MAX_AUDIO_SECONDS * self.sample_rate))]
+        else:
+            audio = slice_audio(
+                self._waveform(example),
+                Segment(example.id, example.path, example.start, example.end),
+                self.sample_rate,
+                MAX_AUDIO_SECONDS,
+            )
         if audio.size == 0:
             raise RuntimeError(f"Empty audio for {example.id}")
         text_ids = self.tokenizer(example.text, add_special_tokens=False).input_ids
@@ -698,7 +655,16 @@ def main() -> None:
     model = load_init_model(cfg.init, cfg.base)
     model.config.use_cache = False
 
-    train_dataset = VoaSliceDataset(examples, locations, processor, lang_token_id, cfg.sample_rate)
+    cache_root, reason = usable_cache(cfg.voa_cache, cfg.sample_rate, cfg.max_audio_seconds)
+    cached: list[Path | None] = [None] * len(examples)
+    if cache_root is None:
+        log.info("voa cache off: %s", reason)
+    else:
+        files = [cache_file(cache_root, example.id) for example in examples]
+        cached = [path if path.is_file() else None for path in files]
+        hits = sum(path is not None for path in cached)
+        log.info("voa cache %s: %d of %d slices cached, the rest are decoded with ffmpeg", cache_root, hits, len(examples))
+    train_dataset = VoaSliceDataset(examples, locations, processor, lang_token_id, cfg.sample_rate, cached)
     extra_clips = 0
     if cfg.extra_train:
         # Paths of the labelled sets come from the same config file.

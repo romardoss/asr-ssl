@@ -256,6 +256,7 @@ class StudentSettings:
     filter_marks: bool
     accepted_mark: tuple[int, ...]
     voa: Path
+    voa_cache: Path | None
     sample_rate: int
     language: str
     eval_data: str
@@ -363,6 +364,8 @@ def load_student_settings(path: Path | None = None) -> StudentSettings:
         filter_marks=filter_marks,
         accepted_mark=accepted,
         voa=_path(student, "voa", "student.voa"),
+        # Optional: decoded slices from fine-tune/cache_voa.py. Unset: every slice is decoded from mp3.
+        voa_cache=_path(student, "voa_cache", "student.voa_cache") if _optional_text(student, "voa_cache", "student.voa_cache") else None,
         sample_rate=_positive_int(student, "sample_rate", "student.sample_rate"),
         language=_text(student, "language", "student.language"),
         eval_data=eval_data,
