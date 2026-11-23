@@ -4,7 +4,8 @@ Training rows are the slices in ``student.labels``. When ``student.filter_marks`
 is true, a row is kept only if its judge mark in ``student.marks`` is one of
 ``student.accepted_mark``. ``latest`` in either path means the newest file for
 ``pseudo_labelling.teacher_model``. Audio is decoded and cut
-with the same functions as pseudo-labelling. ``student.extra_train`` adds
+with the same functions as pseudo-labelling; the dataloader workers only decode,
+and the log-mel features are computed on the GPU (``LogMel``). ``student.extra_train`` adds
 labelled train sets (``data.train`` names, e.g. ``common_voice``) to the same
 run: their clips are shuffled into batches of their own that come after all
 VOA batches, so every epoch ends on them. The marks filter does not apply. Dev is scored every
@@ -239,6 +240,10 @@ class RowGroupSampler(Sampler[int]):
     ``extra`` labelled clips (indexes ``extra_offset`` and up) are shuffled
     into batches of their own that come after every VOA batch, so each epoch
     ends on the labelled data. Each GPU gets an equal share of both parts.
+
+    A DataLoader hands batch ``i`` to worker ``i % workers``. The VOA batches are
+    interleaved so that each worker gets one contiguous stretch of them: a file
+    split over several batches is then decoded by one worker, once.
     """
 
     def __init__(
@@ -248,12 +253,14 @@ class RowGroupSampler(Sampler[int]):
         seed: int,
         extra: int = 0,
         extra_offset: int = 0,
+        workers: int = 0,
     ):
         self.groups = groups
         self.batch_size = batch_size
         self.seed = seed
         self.extra = extra
         self.extra_offset = extra_offset
+        self.workers = workers
         self.epoch = 0
 
     def set_epoch(self, epoch: int) -> None:
@@ -276,7 +283,20 @@ class RowGroupSampler(Sampler[int]):
         if not voa:
             raise RuntimeError("Not enough student slices to fill one batch on every GPU")
         # The labelled batches go last in the epoch.
-        return voa + self._share(labelled, world, rank)
+        return self._per_worker(voa) + self._share(labelled, world, rank)
+
+    def _per_worker(self, indexes: list[int]) -> list[int]:
+        """Batch order in which worker ``w`` receives the ``w``-th contiguous stretch."""
+        if self.workers <= 1:
+            return indexes
+        size = self.batch_size
+        batches = [indexes[start : start + size] for start in range(0, len(indexes), size)]
+        per_worker = len(batches) // self.workers
+        ordered = [
+            batches[worker * per_worker + step] for step in range(per_worker) for worker in range(self.workers)
+        ]
+        ordered.extend(batches[per_worker * self.workers :])
+        return [index for batch in ordered for index in batch]
 
     def _share(self, indexes: list[int], world: int, rank: int) -> list[int]:
         """This rank's contiguous share of whole batches."""
@@ -302,7 +322,6 @@ class VoaSliceDataset(Dataset):
     ):
         self.examples = examples
         self.locations = locations
-        self.feature_extractor = processor.feature_extractor
         self.tokenizer = processor.tokenizer
         self.sample_rate = sample_rate
         transcribe_id = self.tokenizer.convert_tokens_to_ids("<|transcribe|>")
@@ -340,26 +359,15 @@ class VoaSliceDataset(Dataset):
         )
         if audio.size == 0:
             raise RuntimeError(f"Empty audio for {example.id}")
-        extracted = self.feature_extractor(
-            audio,
-            sampling_rate=self.sample_rate,
-            return_tensors="pt",
-            return_attention_mask=True,
-        )
         text_ids = self.tokenizer(example.text, add_special_tokens=False).input_ids
         text_ids = text_ids[: MAX_LABEL_TOKENS - len(self.prefix_ids) - 1]
         labels = self.prefix_ids + text_ids + [self.eos_token_id]
-        return {
-            "input_features": extracted.input_features[0],
-            "attention_mask": extracted.attention_mask[0],
-            "labels": labels,
-        }
+        return {"audio": np.asarray(audio, dtype=np.float32), "labels": labels}
 
 
 class CommonVoiceDataset(Dataset):
     def __init__(self, frame, processor: WhisperProcessor, lang_token_id: int):
         self.frame = frame.reset_index(drop=True)
-        self.feature_extractor = processor.feature_extractor
         self.tokenizer = processor.tokenizer
         self.sampling_rate = processor.feature_extractor.sampling_rate
         transcribe_id = self.tokenizer.convert_tokens_to_ids("<|transcribe|>")
@@ -378,20 +386,10 @@ class CommonVoiceDataset(Dataset):
         max_samples = int(MAX_AUDIO_SECONDS * self.sampling_rate)
         if waveform.numel() > max_samples:
             waveform = waveform[:max_samples]
-        extracted = self.feature_extractor(
-            waveform.numpy(),
-            sampling_rate=self.sampling_rate,
-            return_tensors="pt",
-            return_attention_mask=True,
-        )
         text_ids = self.tokenizer(str(row["sentence"]), add_special_tokens=False).input_ids
         text_ids = text_ids[: MAX_LABEL_TOKENS - len(self.prefix_ids) - 1]
         labels = self.prefix_ids + text_ids + [self.eos_token_id]
-        return {
-            "input_features": extracted.input_features[0],
-            "attention_mask": extracted.attention_mask[0],
-            "labels": labels,
-        }
+        return {"audio": waveform.numpy().astype(np.float32, copy=False), "labels": labels}
 
 
 class LabelledDataset(Dataset):
@@ -399,7 +397,6 @@ class LabelledDataset(Dataset):
 
     def __init__(self, split: SpeechSplit, processor: WhisperProcessor, lang_token_id: int):
         self.split = split
-        self.feature_extractor = processor.feature_extractor
         self.tokenizer = processor.tokenizer
         self.sampling_rate = processor.feature_extractor.sampling_rate
         transcribe_id = self.tokenizer.convert_tokens_to_ids("<|transcribe|>")
@@ -417,32 +414,55 @@ class LabelledDataset(Dataset):
         max_samples = int(MAX_AUDIO_SECONDS * self.sampling_rate)
         if waveform.numel() > max_samples:
             waveform = waveform[:max_samples]
-        extracted = self.feature_extractor(
-            waveform.numpy(),
-            sampling_rate=self.sampling_rate,
-            return_tensors="pt",
-            return_attention_mask=True,
-        )
         text_ids = self.tokenizer(sentence, add_special_tokens=False).input_ids
         text_ids = text_ids[: MAX_LABEL_TOKENS - len(self.prefix_ids) - 1]
         labels = self.prefix_ids + text_ids + [self.eos_token_id]
-        return {
-            "input_features": extracted.input_features[0],
-            "attention_mask": extracted.attention_mask[0],
-            "labels": labels,
-        }
+        return {"audio": waveform.numpy().astype(np.float32, copy=False), "labels": labels}
 
 
 def collate_fn(features: list[dict]) -> dict:
+    """Raw audio zero-padded to the longest clip of the batch; ``LogMel`` turns it into features on the GPU."""
     max_label_len = max(len(feature["labels"]) for feature in features)
     labels = torch.full((len(features), max_label_len), -100, dtype=torch.long)
     for index, feature in enumerate(features):
         labels[index, : len(feature["labels"])] = torch.tensor(feature["labels"], dtype=torch.long)
-    return {
-        "input_features": torch.stack([feature["input_features"] for feature in features]),
-        "attention_mask": torch.stack([feature["attention_mask"] for feature in features]),
-        "labels": labels,
-    }
+    lengths = torch.tensor([len(feature["audio"]) for feature in features], dtype=torch.long)
+    audio = torch.zeros((len(features), int(lengths.max())), dtype=torch.float32)
+    for index, feature in enumerate(features):
+        audio[index, : len(feature["audio"])] = torch.from_numpy(feature["audio"])
+    return {"audio": audio, "audio_lengths": lengths, "labels": labels}
+
+
+class LogMel(torch.nn.Module):
+    """Whisper log-mel features of a padded audio batch, on the batch's device.
+
+    The same steps as ``WhisperFeatureExtractor`` with ``device`` set (zero padding
+    to 30 s, torch STFT, per-clip max - 8 floor), so the dataloader workers only
+    decode audio. Buffers are not persistent: checkpoints stay as they were.
+    """
+
+    def __init__(self, feature_extractor):
+        super().__init__()
+        self.n_fft = int(feature_extractor.n_fft)
+        self.hop_length = int(feature_extractor.hop_length)
+        self.n_samples = int(feature_extractor.n_samples)
+        self.register_buffer("window", torch.hann_window(self.n_fft), persistent=False)
+        filters = torch.as_tensor(np.asarray(feature_extractor.mel_filters), dtype=torch.float32)
+        self.register_buffer("mel_filters", filters.T.contiguous(), persistent=False)
+
+    @torch.no_grad()
+    def forward(self, audio: torch.Tensor, lengths: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        audio = audio[:, : self.n_samples].float()
+        audio = torch.nn.functional.pad(audio, (0, self.n_samples - audio.shape[1]))
+        with torch.autocast(device_type=audio.device.type, enabled=False):
+            stft = torch.stft(audio, self.n_fft, self.hop_length, window=self.window, return_complex=True)
+            magnitudes = stft[..., :-1].abs() ** 2
+            log_spec = torch.clamp(self.mel_filters @ magnitudes, min=1e-10).log10()
+            peak = log_spec.amax(dim=(1, 2), keepdim=True)
+            log_spec = (torch.maximum(log_spec, peak - 8.0) + 4.0) / 4.0
+        frames = torch.arange(0, self.n_samples, self.hop_length, device=audio.device)
+        mask = (frames.unsqueeze(0) < lengths.to(audio.device).unsqueeze(1)).long()
+        return log_spec, mask
 
 
 def _seed_worker(worker_id: int) -> None:
@@ -464,6 +484,7 @@ class WhisperStudent(L.LightningModule):
         super().__init__()
         self.model = model
         self.tokenizer = processor.tokenizer
+        self.log_mel = LogMel(processor.feature_extractor)
         self.learning_rate = learning_rate
         self.warmup_steps = warmup_steps
         self.weight_decay = weight_decay
@@ -488,6 +509,13 @@ class WhisperStudent(L.LightningModule):
         super().train(mode)
         self.model.model.encoder.eval()
         return self
+
+    def on_after_batch_transfer(self, batch, dataloader_idx):
+        # Every loader (train, dev, test) brings raw audio; the features are made here, on the GPU.
+        if "audio" in batch:
+            audio = batch.pop("audio")
+            batch["input_features"], batch["attention_mask"] = self.log_mel(audio, batch.pop("audio_lengths"))
+        return batch
 
     def training_step(self, batch, batch_idx):
         loss = self.model(
@@ -685,6 +713,7 @@ def main() -> None:
         cfg.seed,
         extra=extra_clips,
         extra_offset=len(examples),
+        workers=cfg.num_workers,
     )
     train_loader = DataLoader(
         train_dataset,

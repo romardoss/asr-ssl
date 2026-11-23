@@ -114,6 +114,8 @@ student:
   name: student_whisper-fixed-leaks-7-epochs
   base: openai/whisper-medium
   init: openai/whisper-medium
+  # Own value: the workers read parquet and decode VOA mp3 with ffmpeg; log-mel is made on the GPU.
+  num_workers: 12
   # latest uses the newest labels.csv / label_marks.csv for pseudo_labelling.teacher_model
   marks: latest
   labels: latest
