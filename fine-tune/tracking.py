@@ -204,7 +204,8 @@ def clip_params(splits: dict) -> dict:
     counts = {}
     for name, split in splits.items():
         counts[f"clips.{name}"] = len(split)
-        for part in split.parts:
+        # fine-tune.py splits list their datasets in .parts; the student's Common Voice splits are DataFrames.
+        for part in getattr(split, "parts", ()):
             counts[f"clips.{name}.{part.source}"] = len(part)
     return counts
 
