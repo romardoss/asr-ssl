@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import csv
 import json
+import logging
 import math
 import os
 import sys
@@ -52,6 +53,25 @@ _FINE_TUNE = str(Path(__file__).resolve().parents[1] / "fine-tune")
 if _FINE_TUNE not in sys.path:
     sys.path.append(_FINE_TUNE)
 from voa_slices import cache_file, read_cached, usable_cache  # noqa: E402
+
+
+
+class _DropWhisperGenerationConfigWarning(logging.Filter):
+    """Drop one transformers deprecation warning that Whisper's own ``generate`` triggers.
+
+    ``WhisperGenerationMixin.generate`` calls ``super().generate`` with both
+    ``generation_config`` and ``suppress_tokens``/``begin_suppress_tokens`` (its
+    workaround for cleared suppress lists), so every caller gets "Passing
+    `generation_config` together with generation-related arguments ... is
+    deprecated". It comes from inside the library and changes nothing here.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return "together with generation-related arguments" not in record.getMessage()
+
+
+# Same named logger that transformers.generation.utils gets later, so the filter applies.
+logging.getLogger("transformers.generation.utils").addFilter(_DropWhisperGenerationConfigWarning())
 
 LABELS_NAME = "labels.csv"
 COMPLETE_NAME = "complete"
@@ -414,6 +434,9 @@ def main() -> None:
     model.generation_config.language = settings.language
     model.generation_config.task = settings.task
     model.generation_config.forced_decoder_ids = None
+    # Whisper's config ships max_length=448; generate gets max_new_tokens per batch, so drop
+    # max_length to avoid the "Both `max_new_tokens` and `max_length`" warning on every call.
+    model.generation_config.max_length = None
     device = torch.device("cuda", 0)
     torch.cuda.set_device(device)
     # bf16 weights: half the memory and faster than fp32 weights under autocast; no gradients here.
