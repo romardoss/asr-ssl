@@ -98,6 +98,9 @@ data:
 pseudo_labelling:
   teacher_model: ${paths.checkpoints}/model-whisper-m-fixed-leaks-10-epochs_01/model-whisper-m-fixed-leaks-10-epochs-epoch05.ckpt
   voa: ${paths.voa}
+  # Slices already in this cache (python main.py cache-voa) are read from it; only the mp3 files
+  # with uncached slices are decoded with ffmpeg. Leave empty to decode everything.
+  voa_cache: ${paths.voa_cache}
   ukrainian_meta: datasets/voa-ukr/ukrainian.csv
   timestamps: datasets/voa-ukr/ukrainian_30s.csv
   sample_rate: 16000

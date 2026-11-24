@@ -1,0 +1,117 @@
+% Каркас магістерської дисертації (КПІ, ННІ ПСА, кафедра ШІ, 2026).
+% Збирання: latexmk -xelatex main.tex   (або lualatex). Поруч має лежати kpi-thesis.sty.
+\documentclass[14pt,a4paper,oneside]{extreport}
+\usepackage{kpi-thesis}
+
+\begin{document}
+
+% Титул, декларація, завдання — з Word-шаблону кафедри, експортовані в PDF (F-14.1, F-4.2).
+% Вони враховуються в нумерації, але номер на них не друкується.
+\IfFileExists{front.pdf}{\kpifrontmatter{front.pdf}}{}
+
+% ---------- РЕФЕРАТ / ABSTRACT (F-15.*) ----------
+\structuralnotoc{Реферат}
+Магістерська дисертація: 98~с., 25~рис., 12~табл., 45~посилань, 2~додатки.
+
+РОЗПІЗНАВАННЯ МОВЛЕННЯ, НАПІВКЕРОВАНЕ НАВЧАННЯ, ПСЕВДОРОЗМІТКА, WHISPER, УКРАЇНСЬКА МОВА.
+
+Об'єкт дослідження~-- \dots
+
+Предмет дослідження~-- \dots
+
+Мета роботи~-- \dots
+
+\structuralnotoc{Abstract}
+\begin{otherlanguage}{english}
+Master's thesis: 98~p., 25~figures, 12~tables, 45~references, 2~appendices.
+
+SPEECH RECOGNITION, SEMI-SUPERVISED LEARNING, PSEUDO-LABELING.
+
+The object of the study is \dots
+\end{otherlanguage}
+
+\tableofcontents
+
+% ---------- ПЕРЕЛІК СКОРОЧЕНЬ (за потреби, F-2.10) ----------
+\structural{Перелік умовних позначень, символів, скорочень і термінів}
+\abbr{ASR}{автоматичне розпізнавання мовлення (Automatic Speech Recognition);}
+\abbr{WER}{частка помилково розпізнаних слів (Word Error Rate).}
+
+% ---------- ВСТУП ----------
+\structural{Вступ}
+Актуальність теми зумовлена \dots~\cite{radford2023}.
+
+% ---------- РОЗДІЛ 1 ----------
+\chapter{Огляд методів розпізнавання мовлення}
+У цьому розділі розглянуто \dots{} (преамбула обов'язкова, F-3.4).
+
+\section{Моделі розпізнавання}
+Архітектуру моделі показано на рис.~\ref{fig:arch}.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.9\textwidth]{example-image}
+  \figlegend{\textit{x}~-- вхідний сигнал; \textit{y}~-- транскрипт}
+  \caption{Архітектура моделі}\label{fig:arch}
+\end{figure}
+
+Результати порівняння наведено в табл.~\ref{tab:wer}.
+
+\begin{table}[htbp]
+  \caption{Порівняння моделей}\label{tab:wer}
+  \centering
+  \begin{tabular}{|L{8cm}|C{4cm}|}
+    \hline
+    \textbf{Модель} & \textbf{WER, \%} \\ \hline
+    Whisper large-v3 & 12,3 \\ \hline
+    wav2vec~2.0 & 14,1 \\ \hline
+  \end{tabular}
+\end{table}
+
+Метрику WER обчислюють за формулою~\eqref{eq:wer}:
+\begin{equation}\label{eq:wer}
+  \mathrm{WER} = \frac{S + D + I}{N},
+\end{equation}
+\begin{where}
+  $S$~-- кількість замін;\\
+  $D$~-- кількість видалень;\\
+  $I$~-- кількість вставок;\\
+  $N$~-- кількість слів еталонного транскрипту.
+\end{where}
+
+\section{Постановка задачі}
+Метою роботи є \dots{} Для цього розв'язано такі завдання:
+\begin{itemize}
+  \item зібрати корпус нерозміченого мовлення;
+  \item побудувати псевдорозмітку.
+\end{itemize}
+
+Етапи експерименту описано нижче.
+\begin{enumerate}
+  \item Попереднє навчання моделі.
+  \item Донавчання на псевдорозмітці.
+\end{enumerate}
+
+\chapterconclusions
+У розділі проаналізовано \dots
+
+% ---------- ВИСНОВКИ ----------
+\structural{Висновки}
+\begin{enumerate}
+  \item Проаналізовано \dots
+\end{enumerate}
+
+% ---------- ПЕРЕЛІК ПОСИЛАНЬ (ДСТУ 8302:2015, порядок першої згадки) ----------
+\begin{thebibliography}{99}
+  \bibitem{radford2023} Radford A., Kim J. W., Xu T. et al. Robust Speech Recognition via Large-Scale Weak Supervision. \textit{Proc. 40th International Conference on Machine Learning}. 2023. P.~28492--28518. URL: https://proceedings.mlr.press/v202/radford23a.html (дата звернення: 24.11.2026).
+\end{thebibliography}
+
+% ---------- ДОДАТКИ ----------
+\kpiappendix
+\chapter{Лістинг програми}
+Код наведено в лістингу~\ref{lst:main}.
+\begin{lstlisting}[caption={Основний модуль},label=lst:main,language=Python]
+print("hello")
+\end{lstlisting}
+
+\end{document}

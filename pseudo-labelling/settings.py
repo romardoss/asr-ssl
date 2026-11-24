@@ -34,6 +34,8 @@ class LabellingSettings:
     output_dir: Path
     gpus: tuple[int, ...]
     max_audio_seconds: float
+    # Decoded slices from python main.py cache-voa; None decodes every mp3 with ffmpeg.
+    voa_cache: Path | None
 
 
 def _mapping(data: dict, name: str) -> dict:
@@ -84,6 +86,14 @@ def _path(section: dict, key: str, label: str) -> Path:
     return raw
 
 
+def _optional_path(section: dict, key: str, label: str) -> Path | None:
+    """``key`` as a path, or None when it is absent or empty."""
+    value = section.get(key)
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return None
+    return _path(section, key, label)
+
+
 def load_labelling(path: Path | None = None) -> LabellingSettings:
     config_path = path or CONFIG_PATH
     if not config_path.is_file():
@@ -110,4 +120,5 @@ def load_labelling(path: Path | None = None) -> LabellingSettings:
         output_dir=_path(section, "output_dir", "pseudo_labelling.output_dir"),
         gpus=tuple(selected),
         max_audio_seconds=_positive_float(data, "max_audio_seconds", "data.max_audio_seconds"),
+        voa_cache=_optional_path(section, "voa_cache", "pseudo_labelling.voa_cache"),
     )

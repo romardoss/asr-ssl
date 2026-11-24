@@ -1,0 +1,190 @@
+% kpi-thesis.sty — оформлення магістерської дисертації КПІ (ННІ ПСА, кафедра ШІ, 2026)
+% за docs/diploma/rules.md (ДСТУ 3008:2015 + шаблон кафедри). Компілювати XeLaTeX або LuaLaTeX.
+% Клас: \documentclass[14pt,a4paper,oneside]{extreport}
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{kpi-thesis}[2026/11/24 KPI master thesis formatting]
+
+% ---------- шрифти, мова ----------
+\RequirePackage{fontspec}
+\IfFontExistsTF{Times New Roman}%
+  {\setmainfont{Times New Roman}}%                           F-2.1
+  {\setmainfont{TeX Gyre Termes}\PackageWarning{kpi-thesis}{Times New Roman not found, using TeX Gyre Termes}}
+\IfFontExistsTF{Courier New}{\setmonofont{Courier New}[Scale=0.85]}{}
+\RequirePackage[english,main=ukrainian]{babel}
+\RequirePackage{amsmath}
+\RequirePackage{unicode-math}
+\setmathfont{TeX Gyre Termes Math}
+\RequirePackage{indentfirst}
+\RequirePackage{etoolbox}
+
+% ---------- сторінка ----------
+% F-1.4: ліве 30, праве 10, верхнє 20, нижнє 20 мм; колонтитул 12,5 мм від краю
+\RequirePackage[a4paper,left=30mm,right=10mm,top=20mm,bottom=20mm,
+  headheight=6mm,headsep=1.5mm,footskip=10mm]{geometry}
+
+% ---------- абзац ----------
+\RequirePackage{setspace}
+% Word «1,5 строки» для TNR 14 ≈ 24,15 pt; extreport 14pt має \baselineskip 17 pt → 1,42  (F-2.2)
+\setstretch{1.42}
+\setlength{\parindent}{1.25cm}%                              F-2.3
+\setlength{\parskip}{0pt}
+\RequirePackage{microtype}
+\clubpenalty=10000 \widowpenalty=10000
+\frenchspacing
+\raggedbottom
+
+% ---------- номер сторінки праворуч угорі (F-4.1) ----------
+\RequirePackage{fancyhdr}
+\fancypagestyle{kpi}{\fancyhf{}\fancyhead[R]{\normalsize\thepage}%
+  \renewcommand{\headrulewidth}{0pt}\renewcommand{\footrulewidth}{0pt}}
+\fancypagestyle{plain}{\fancyhf{}\fancyhead[R]{\normalsize\thepage}%
+  \renewcommand{\headrulewidth}{0pt}}
+\pagestyle{kpi}
+
+% ---------- заголовки (F-5.*) ----------
+\RequirePackage{titlesec}
+\newcommand{\kpi@nohyph}{\hyphenpenalty=10000\exhyphenpenalty=10000}%   F-5.8
+% Розділ: «РОЗДІЛ 1 НАЗВА», 14 pt, жирний, великі, по центру, з нової сторінки
+\titleformat{\chapter}[block]{\normalsize\bfseries\centering\kpi@nohyph}
+  {\MakeUppercase{\chaptertitlename}\ \thechapter}{0.5em}{\MakeUppercase}
+\titlespacing*{\chapter}{0pt}{-\baselineskip}{\baselineskip}
+% Підрозділ: «1.1 Назва», жирний, з абзацного відступу
+\titleformat{\section}[block]{\normalsize\bfseries\raggedright\kpi@nohyph}
+  {\hspace*{\parindent}\thesection}{0.5em}{}
+\titlespacing*{\section}{0pt}{\baselineskip}{\baselineskip}
+% Пункт: «1.1.1 Назва», курсив
+\titleformat{\subsection}[block]{\normalsize\itshape\raggedright\kpi@nohyph}
+  {\hspace*{\parindent}\thesubsection}{0.5em}{}
+\titlespacing*{\subsection}{0pt}{\baselineskip}{\baselineskip}
+% Підпункт: номер без заголовка — з абзацного відступу в рядок
+\titleformat{\subsubsection}[runin]{\normalsize}{\hspace*{\parindent}\thesubsubsection}{0.5em}{}
+\titlespacing*{\subsubsection}{0pt}{0pt}{0.5em}
+\setcounter{secnumdepth}{3}
+\setcounter{tocdepth}{2}
+\addto\captionsukrainian{%
+  \renewcommand{\chaptername}{Розділ}%
+  \renewcommand{\contentsname}{ЗМІСТ}%
+  \renewcommand{\bibname}{ПЕРЕЛІК ПОСИЛАНЬ}%
+  \renewcommand{\appendixname}{Додаток}%
+  \renewcommand{\figurename}{Рисунок}%
+  \renewcommand{\tablename}{Таблиця}}
+
+% Структурний елемент без номера (F-5.1, F-3.3): РЕФЕРАТ, ВСТУП, ВИСНОВКИ …
+\newcommand{\structural}[1]{%
+  \chapter*{\MakeUppercase{#1}}%
+  \addcontentsline{toc}{chapter}{\MakeUppercase{#1}}}
+% Те саме, але без рядка у змісті (РЕФЕРАТ, ABSTRACT, ЗМІСТ ідуть до змісту)
+\newcommand{\structuralnotoc}[1]{\chapter*{\MakeUppercase{#1}}}
+% «Висновки до розділу N» (F-3.4, F-5.5)
+\newcommand{\chapterconclusions}{%
+  \section*{\hspace*{\parindent}Висновки до розділу \thechapter}%
+  \addcontentsline{toc}{section}{Висновки до розділу \thechapter}}
+
+% Рядок переліку скорочень: \abbr{ASR}{автоматичне розпізнавання мовлення;}
+\newcommand{\abbr}[2]{\par\noindent\hangindent=3cm\hangafter=1\makebox[3cm][l]{#1}\textendash\ #2\par}
+
+% ---------- зміст (F-6.*) ----------
+\RequirePackage{tocloft}
+\renewcommand{\cfttoctitlefont}{\hfill\normalsize\bfseries}
+\renewcommand{\cftaftertoctitle}{\hfill}
+\setlength{\cftbeforetoctitleskip}{-\baselineskip}
+\setlength{\cftaftertoctitleskip}{\baselineskip}
+\renewcommand{\cftchapfont}{\normalfont}
+\renewcommand{\cftchappagefont}{\normalfont}
+\renewcommand{\cftchapleader}{\cftdotfill{\cftdotsep}}
+\renewcommand{\cftchappresnum}{РОЗДІЛ\ }
+\setlength{\cftchapnumwidth}{6.2em}
+\setlength{\cftbeforechapskip}{0pt}
+\setlength{\cftsecindent}{1.25cm}
+\setlength{\cftsubsecindent}{2.5cm}
+\setlength{\cftsecnumwidth}{2.6em}
+\setlength{\cftsubsecnumwidth}{3.4em}
+
+% ---------- рисунки й таблиці (F-8.*, F-9.*) ----------
+\RequirePackage{graphicx}
+\RequirePackage{float}
+\RequirePackage{caption}
+\DeclareCaptionLabelSeparator{endash}{\ \textendash\ }
+\DeclareCaptionFormat{kpitable}{\hspace*{1.25cm}#1#2#3}
+\captionsetup{font=normalsize,labelfont=bf,textfont=normalfont,labelsep=endash,
+  skip=0pt,belowskip=0pt,aboveskip=0pt}
+\captionsetup[figure]{justification=centering,singlelinecheck=false,position=bottom}
+\captionsetup[table]{format=kpitable,justification=raggedright,singlelinecheck=false,position=top}
+% нумерація N.M у межах розділу — за замовчуванням у extreport
+\setlength{\intextsep}{\baselineskip}   % 1 порожній рядок до/після (F-8.7, F-9.3)
+\setlength{\textfloatsep}{\baselineskip}
+% Легенда рисунка: 12 pt, одинарний інтервал, по центру (F-8.5)
+\newcommand{\figlegend}[1]{{\centering\fontsize{12}{13.8}\selectfont\setstretch{1}#1\par}}
+% Таблиці: 12 pt, одинарний інтервал (F-9.5)
+\RequirePackage{array,longtable,multirow}
+\AtBeginEnvironment{tabular}{\fontsize{12}{13.8}\selectfont\setstretch{1}}
+\AtBeginEnvironment{longtable}{\fontsize{12}{13.8}\selectfont\setstretch{1}}
+\newcolumntype{C}[1]{>{\centering\arraybackslash}m{#1}}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}m{#1}}
+% Для longtable: \kpicontinued{кількість колонок} у \endhead (F-9.7)
+\newcommand{\kpicontinued}[1]{\multicolumn{#1}{r}{\normalsize\bfseries Продовження таблиці \thetable}\\}
+
+% ---------- формули (F-10.*) ----------
+\numberwithin{equation}{chapter}
+% «де» без двокрапки, без абзацного відступу (F-10.4):
+%   \begin{where} $S$~-- кількість замін;\\ $N$~-- кількість слів еталона. \end{where}
+\newenvironment{where}{\par\noindent де\ \ignorespaces}{\par}
+
+% ---------- переліки (F-7.*) ----------
+\RequirePackage{enumitem}
+\setlist{nosep,itemsep=0pt,parsep=0pt,topsep=0pt,partopsep=0pt}
+\setlist[itemize]{label=\textendash,leftmargin=0pt,itemindent=\dimexpr\parindent+1.5em\relax,labelwidth=1em,labelsep=0.5em,align=left}
+\setlist[enumerate]{label=\arabic*.,leftmargin=0pt,itemindent=\dimexpr\parindent+1.5em\relax,labelwidth=1em,labelsep=0.5em,align=left}
+\newlist{inlinelist}{enumerate}{1}%                         F-7.3: 1), 2)
+\setlist[inlinelist]{label=\arabic*),leftmargin=0pt,itemindent=\dimexpr\parindent+1.5em\relax,labelwidth=1em,labelsep=0.5em,align=left}
+
+% ---------- виноски 12 pt (F-2.9) ----------
+\renewcommand{\footnotesize}{\fontsize{12}{13.8}\selectfont}
+\RequirePackage[hang,flushmargin]{footmisc}
+
+% ---------- посилання (F-11.*, F-12.*) ----------
+\RequirePackage{cite}%   [1], [3, 7], [4–6]
+\renewcommand{\citepunct}{,\ }
+\renewcommand{\citedash}{\textendash}
+\RequirePackage[hidelinks]{hyperref}
+\makeatletter
+\renewcommand{\@biblabel}[1]{#1.}
+\renewenvironment{thebibliography}[1]{%
+  \structural{\bibname}%
+  \list{\@biblabel{\@arabic\c@enumiv}}%
+    {\settowidth\labelwidth{\@biblabel{#1}}%
+     \setlength{\leftmargin}{0pt}\setlength{\itemindent}{\dimexpr\parindent+\labelwidth+\labelsep\relax}%
+     \setlength{\itemsep}{0pt}\setlength{\parsep}{0pt}%
+     \usecounter{enumiv}\let\p@enumiv\@empty\renewcommand\theenumiv{\@arabic\c@enumiv}}%
+  \raggedright\sloppy}{\def\@noitemerr{\@latex@warning{Empty `thebibliography' environment}}\endlist}
+\makeatother
+
+% ---------- додатки (F-13.*) ----------
+% Літери без Ґ, Є, З, І, Ї, Й, О, Ч, Ь
+\newcommand{\kpi@appletter}[1]{\ifcase#1\or А\or Б\or В\or Г\or Д\or Е\or Ж\or К\or Л\or М\or Н\or П\or Р\or С\or Т\or У\or Ф\or Х\or Ц\or Ш\or Щ\or Ю\or Я\fi}
+\newcommand{\kpiappendix}{%
+  \setcounter{chapter}{0}%
+  \renewcommand{\thechapter}{\kpi@appletter{\value{chapter}}}%
+  \renewcommand{\theHchapter}{app.\arabic{chapter}}%
+  \titleformat{\chapter}[display]{\normalsize\bfseries\centering\kpi@nohyph}
+    {ДОДАТОК \thechapter}{0pt}{\MakeUppercase}%
+  \titlespacing*{\chapter}{0pt}{-\baselineskip}{\baselineskip}%
+  \renewcommand{\cftchappresnum}{ДОДАТОК\ }%
+  \addtocontents{toc}{\protect\renewcommand{\protect\cftchappresnum}{ДОДАТОК\ }}%
+  \renewcommand{\thefigure}{\thechapter.\arabic{figure}}%
+  \renewcommand{\thetable}{\thechapter.\arabic{table}}%
+  \renewcommand{\theequation}{\thechapter.\arabic{equation}}}
+
+% ---------- лістинги ----------
+\RequirePackage{listings}
+\lstset{basicstyle=\ttfamily\fontsize{11}{12}\selectfont\setstretch{1},breaklines=true,
+  columns=fullflexible,keepspaces=true,showstringspaces=false,frame=single}
+\renewcommand{\lstlistingname}{Лістинг}
+
+% ---------- титул/декларація/завдання з Word-шаблону (F-14.1) ----------
+% \kpifrontmatter{front.pdf} — вставляє PDF титулу, декларації й завдання без номерів,
+% але з урахуванням у нумерації (F-4.2)
+\RequirePackage{pdfpages}
+\newcommand{\kpifrontmatter}[1]{\includepdf[pages=-,pagecommand={\thispagestyle{empty}}]{#1}}
+
+\endinput
