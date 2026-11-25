@@ -1,0 +1,23 @@
+stage: student
+base: openai/whisper-medium
+init: openai/whisper-medium
+train_data:
+- voa_pseudo_labels
+filter_marks: true
+accepted_mark:
+- 3
+- 4
+- 5
+labels: /home/rberehun/asr-ssl/output/pseudo-labelling/model-whisper-m-fixed-leaks-10-epochs-epoch05-01/labels.csv
+learning_rate: 1.0e-05
+max_epochs: 7
+precision: bf16-mixed
+seed: 42
+model: student_whisper-fixed-leaks-7-epochs
+checkpoint: student_whisper-fixed-leaks-7-epochs-epoch00.ckpt
+epoch: 0
+checkpoint_dir: /mnt/data/rberehun/checkpoints/student_whisper-fixed-leaks-7-epochs_01
+base_model: openai/whisper-medium
+language: uk
+evaluated_at: '2026-11-25 11:38:32'
+git_commit: 2ef3861

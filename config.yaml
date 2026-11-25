@@ -31,8 +31,8 @@ model:
 # The one GPU of every stage: fine-tune, student, multi_step, evaluation, labelling, language ID.
 # Exactly one must be true. For parallel runs use one config file per GPU (ASR_CONFIG).
 gpus:
-  nvidia0: true 
-  nvidia1: false
+  nvidia0: false 
+  nvidia1: true
 
 # Full checkpoint (weights and optimizer) every this fraction of an epoch, for every training stage.
 # 0.25 saves at 25, 50, and 75 %; the end of each epoch is always saved. 1.0: epoch ends only.
