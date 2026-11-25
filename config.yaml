@@ -31,7 +31,7 @@ model:
 # The one GPU of every stage: fine-tune, student, multi_step, evaluation, labelling, language ID.
 # Exactly one must be true. For parallel runs use one config file per GPU (ASR_CONFIG).
 gpus:
-  nvidia0: true
+  nvidia0: true 
   nvidia1: false
 
 # Full checkpoint (weights and optimizer) every this fraction of an epoch, for every training stage.
@@ -61,7 +61,8 @@ batch_size:
   # для суто тестування 32 забирає 11гб відеопам'яті, можна більше
   # для суто тестування 64 забирає 16гб відеопам'яті, можна більше
   # 96 - OOM
-  testing: 64
+  # 80 - ?
+  testing: 80
 
 training:
   learning_rate: 0.00001
