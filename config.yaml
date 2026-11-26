@@ -117,23 +117,23 @@ student:
   # Not listed here, so taken from training (and batch_size.train): learning_rate, warmup_steps, max_epochs,
   # num_workers, precision, seed, gradient_clip, weight_decay, accumulate_grad_batches, resume, val_every,
   # limit_train_batches, limit_val_batches, batch_size.train. Set one here to give the student its own value.
-  name: student_whisper-fixed-leaks-7-epochs-marks345-pluscv
+  name: student_whisper-fixed-leaks-7-epochs-marks12345-pluscv
   base: openai/whisper-medium
   init: openai/whisper-medium
   # Own value: the workers read parquet and decode VOA mp3 with ffmpeg; log-mel is made on the GPU.
-  num_workers: 12
+  num_workers: 10
   # latest uses the newest labels.csv / label_marks.csv for pseudo_labelling.teacher_model
   marks: latest
   labels: output/pseudo-labelling/model-whisper-m-fixed-leaks-10-epochs-epoch05-01/labels.csv
   # false trains on every non-empty label and does not read marks
   filter_marks: true
-  accepted_mark: [3, 4, 5]
+  accepted_mark: [1, 2, 3, 4, 5]
   # Teacher confidence range [from, to], both ends included (confidence column of student.labels).
-  accepted_confidence: [0.9, 1.0]
+  accepted_confidence: [0.85, 1.0]
   # true: keep the labels whose confidence is in accepted_confidence instead of filtering by marks;
   # filter_marks / accepted_mark are then ignored and label_marks.csv is not read.
   # student.labels must then be a labels.csv with the confidence column.
-  use_confidence_instead_of_marks: false
+  use_confidence_instead_of_marks: true
   # Labelled train sets (data.train names) trained in the same run after the pseudo-labels:
   # each epoch ends on them. accepted_mark does not apply to them. Empty: pseudo-labels only.
   extra_train: [common_voice]
