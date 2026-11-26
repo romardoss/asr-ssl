@@ -148,7 +148,9 @@ def load_pipeline(path: Path | None = None) -> PipelineSettings:
         judge_workers=_positive_int(section, "judge_workers", "pipeline.judge_workers"),
         judge_retries=_positive_int(section, "judge_retries", "pipeline.judge_retries"),
         judge_model=judge_model.strip(),
-        filter_marks=_bool(student, "filter_marks", "student.filter_marks"),
+        # Confidence comes from labels.csv itself, so the student does not need label_marks.csv then.
+        filter_marks=_bool(student, "filter_marks", "student.filter_marks")
+        and student.get("use_confidence_instead_of_marks") is not True,
         labels_spec=_text(student, "labels", "student.labels"),
         checkpoints=repo_path(_text(paths, "checkpoints", "paths.checkpoints")),
         student_name=_text(student, "name", "student.name"),

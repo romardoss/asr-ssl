@@ -4,7 +4,9 @@ The chain is the ``multi_step`` section of the config. Each step is either
 
 - ``data: pseudo``: VOA slices with their pseudo-labels, trained by
   ``fine-tune-student.py`` with the ``student`` settings. ``accepted_mark``
-  keeps only labels with those judge marks; without it every label is used.
+  keeps only labels with those judge marks; ``accepted_confidence: [from, to]``
+  instead keeps labels whose teacher confidence is in that range. Without
+  either every label is used.
 - ``data: [common_voice, ...]``: labelled datasets, trained by
   ``fine-tune.py`` with the ``training`` settings and ``data.dev``.
 - ``data: [pseudo, common_voice, ...]``: both in one run of
@@ -87,21 +89,30 @@ class Step:
     pseudo: bool
     datasets: tuple[str, ...] = ()
     marks: tuple[int, ...] | None = None
+    confidence: tuple[float, float] | None = None
     overrides: dict = field(default_factory=dict)
 
     @property
     def label(self) -> str:
         if not self.pseudo:
             return "-".join(self.datasets)
-        pseudo = "pseudo-m" + "".join(str(mark) for mark in self.marks) if self.marks else "pseudo-all"
+        if self.confidence:
+            pseudo = f"pseudo-c{self.confidence[0]:g}-{self.confidence[1]:g}"
+        elif self.marks:
+            pseudo = "pseudo-m" + "".join(str(mark) for mark in self.marks)
+        else:
+            pseudo = "pseudo-all"
         return "-".join([pseudo, *self.datasets])
 
     @property
     def description(self) -> str:
         if not self.pseudo:
             return ", ".join(self.datasets)
-        marks = ", ".join(str(mark) for mark in self.marks) if self.marks else "all"
-        return " + ".join([f"pseudo-labels (marks {marks})", *self.datasets])
+        if self.confidence:
+            scope = f"confidence {self.confidence[0]:g}-{self.confidence[1]:g}"
+        else:
+            scope = "marks " + (", ".join(str(mark) for mark in self.marks) if self.marks else "all")
+        return " + ".join([f"pseudo-labels ({scope})", *self.datasets])
 
 
 @dataclass(frozen=True)
@@ -137,11 +148,21 @@ def _marks(raw, label: str) -> tuple[int, ...]:
     return tuple(sorted(marks))
 
 
+def _confidence(raw, label: str) -> tuple[float, float]:
+    message = f"{label} must be [from, to]: two numbers from 0 to 1, from <= to"
+    if not isinstance(raw, list) or len(raw) != 2 or any(isinstance(item, bool) or not isinstance(item, (int, float)) for item in raw):
+        _fail(message)
+    low, high = float(raw[0]), float(raw[1])
+    if not 0.0 <= low <= high <= 1.0:
+        _fail(message)
+    return low, high
+
+
 def _step(number: int, raw) -> Step:
     label = f"steps[{number}]"
     if not isinstance(raw, dict) or "data" not in raw:
         _fail(f"{label} must be a mapping with 'data'")
-    unknown = set(raw) - {"data", "accepted_mark", *OVERRIDES}
+    unknown = set(raw) - {"data", "accepted_mark", "accepted_confidence", *OVERRIDES}
     if unknown:
         _fail(f"{label} has unknown keys: {', '.join(sorted(unknown))}")
     overrides = {}
@@ -161,10 +182,16 @@ def _step(number: int, raw) -> Step:
     datasets = tuple(item for item in data if item != PSEUDO)
     check_names(datasets, "train", f"multi_step {label}.data")
     if PSEUDO in data:
+        if "accepted_mark" in raw and "accepted_confidence" in raw:
+            _fail(f"{label} sets both accepted_mark and accepted_confidence; keep one")
         marks = _marks(raw["accepted_mark"], f"{label}.accepted_mark") if "accepted_mark" in raw else None
-        return Step(number, True, datasets=datasets, marks=marks, overrides=overrides)
-    if "accepted_mark" in raw:
-        _fail(f"{label}.accepted_mark applies only when data includes {PSEUDO}")
+        confidence = (
+            _confidence(raw["accepted_confidence"], f"{label}.accepted_confidence") if "accepted_confidence" in raw else None
+        )
+        return Step(number, True, datasets=datasets, marks=marks, confidence=confidence, overrides=overrides)
+    for key in ("accepted_mark", "accepted_confidence"):
+        if key in raw:
+            _fail(f"{label}.{key} applies only when data includes {PSEUDO}")
     return Step(number, False, datasets=datasets, overrides=overrides)
 
 
@@ -195,10 +222,19 @@ def step_config(config: dict, chain: Chain, step: Step, init: str) -> dict:
     if step.pseudo:
         student = derived["student"]
         student.update(
-            {"name": name, "init": init, "filter_marks": step.marks is not None, "extra_train": list(step.datasets)}
+            {
+                "name": name,
+                "init": init,
+                "filter_marks": step.marks is not None,
+                # The step alone decides the filter, whatever student.use_confidence_instead_of_marks says.
+                "use_confidence_instead_of_marks": step.confidence is not None,
+                "extra_train": list(step.datasets),
+            }
         )
         if step.marks is not None:
             student["accepted_mark"] = list(step.marks)
+        if step.confidence is not None:
+            student["accepted_confidence"] = list(step.confidence)
         student.update(step.overrides)
     else:
         derived["model"]["name"] = name

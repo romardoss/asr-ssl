@@ -2,7 +2,9 @@
 
 Training rows are the slices in ``student.labels``. When ``student.filter_marks``
 is true, a row is kept only if its judge mark in ``student.marks`` is one of
-``student.accepted_mark``. ``latest`` in either path means the newest file for
+``student.accepted_mark``. ``student.use_confidence_instead_of_marks`` keeps
+instead the rows whose teacher ``confidence`` (a column of ``student.labels``)
+is within ``student.accepted_confidence`` ``[from, to]``; marks are then not read. ``latest`` in either path means the newest file for
 ``pseudo_labelling.teacher_model``. Audio is decoded and cut
 with the same functions as pseudo-labelling; the dataloader workers only decode,
 and the log-mel features are computed on the GPU (``LogMel``). ``student.extra_train`` adds
@@ -79,7 +81,7 @@ from speech_data import SpeechSplit, load_train_split
 
 sys.path.insert(0, str(ROOT / "pseudo-labelling"))
 from preprocess import Segment, decode, slice_audio
-from voa_slices import SliceExample, accepted_ids, cache_file, load_slices, read_cached, usable_cache
+from voa_slices import SliceExample, cache_file, load_slices, read_cached, student_ids, usable_cache
 
 MAX_AUDIO_SECONDS = SETTINGS.max_audio_seconds
 MAX_LABEL_TOKENS = SETTINGS.max_label_tokens
@@ -625,15 +627,11 @@ def main() -> None:
         cfg.eval_batch_size,
     )
 
-    if cfg.filter_marks:
-        wanted = accepted_ids(cfg.marks, cfg.accepted_mark)
-        examples = load_slices(cfg.labels, wanted)
-        if not examples:
-            raise SystemExit(f"No labels with marks {', '.join(str(mark) for mark in cfg.accepted_mark)}")
-    else:
-        examples = load_slices(cfg.labels, None)
-        if not examples:
-            raise SystemExit(f"No usable labels in {cfg.labels}")
+    wanted, scope = student_ids(cfg)
+    examples = load_slices(cfg.labels, wanted)
+    if not examples:
+        raise SystemExit(f"No usable labels in {cfg.labels} ({scope})")
+    log.info("student labels: %s", scope)
     locations = locate_slices(voa_shards(cfg.voa), {example.path for example in examples})
     log.info("student slices: %d files: %d", len(examples), len({example.path for example in examples}))
 
@@ -747,8 +745,10 @@ def main() -> None:
         "accumulate_grad_batches": cfg.accumulate_grad_batches,
         "frozen": "encoder",
         "trainable": "decoder",
-        "filter_marks": cfg.filter_marks,
-        "accepted_mark": list(cfg.accepted_mark),
+        "filter_marks": cfg.filter_marks and not cfg.use_confidence,
+        "accepted_mark": None if cfg.use_confidence else list(cfg.accepted_mark),
+        "use_confidence_instead_of_marks": cfg.use_confidence,
+        "accepted_confidence": list(cfg.accepted_confidence) if cfg.use_confidence else None,
         "train_data": ["voa_pseudo_labels", *cfg.extra_train],
         # Without common_voice in extra_train the student sees Common Voice only through its init model.
         "cv_train_rows": (
@@ -831,8 +831,10 @@ def main() -> None:
             "base": cfg.base,
             "init": cfg.init,
             "language": cfg.language,
-            "filter_marks": cfg.filter_marks,
-            "accepted_mark": list(cfg.accepted_mark),
+            "filter_marks": cfg.filter_marks and not cfg.use_confidence,
+            "accepted_mark": None if cfg.use_confidence else list(cfg.accepted_mark),
+            "use_confidence_instead_of_marks": cfg.use_confidence,
+            "accepted_confidence": list(cfg.accepted_confidence) if cfg.use_confidence else None,
             "devices": device_names or device_ids,
             "epochs": cfg.max_epochs,
             "frozen": "encoder",

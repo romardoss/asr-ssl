@@ -128,6 +128,12 @@ student:
   # false trains on every non-empty label and does not read marks
   filter_marks: true
   accepted_mark: [3, 4, 5]
+  # Teacher confidence range [from, to], both ends included (confidence column of student.labels).
+  accepted_confidence: [0.9, 1.0]
+  # true: keep the labels whose confidence is in accepted_confidence instead of filtering by marks;
+  # filter_marks / accepted_mark are then ignored and label_marks.csv is not read.
+  # student.labels must then be a labels.csv with the confidence column.
+  use_confidence_instead_of_marks: false
   # Labelled train sets (data.train names) trained in the same run after the pseudo-labels:
   # each epoch ends on them. accepted_mark does not apply to them. Empty: pseudo-labels only.
   extra_train: [common_voice]
@@ -147,7 +153,8 @@ student:
 # Multi-step fine-tuning: fine-tune/multi_step.py, or pipeline.multi_step.
 # Each step starts from the final checkpoint of the step before it; step 1 from init.
 # data: pseudo trains on VOA pseudo-labels with the student settings; accepted_mark keeps
-#   only those judge marks (leave it out to use every label).
+#   only those judge marks; accepted_confidence: [from, to] keeps instead the labels with that
+#   teacher confidence (set one of the two, or neither to use every label).
 # data: [dataset, ...] trains on labelled sets from data.train names with the training settings.
 # data: [pseudo, dataset, ...] trains on both in one student run (student.extra_train): each epoch goes
 #   through the pseudo-labels first, then the datasets. accepted_mark filters only the pseudo part.

@@ -48,6 +48,39 @@ def accepted_ids(path: Path, marks: tuple[int, ...]) -> set[str]:
     return {label_id for label_id, score in latest.items() if score in accepted}
 
 
+def confident_ids(labels_path: Path, low: float, high: float) -> set[str]:
+    """IDs in ``labels_path`` whose teacher ``confidence`` is within ``[low, high]``."""
+    if not labels_path.is_file():
+        raise SystemExit(f"Labels file not found: {labels_path}")
+    found: set[str] = set()
+    with labels_path.open(encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        if "confidence" not in (reader.fieldnames or []):
+            raise SystemExit(
+                f"{labels_path} has no confidence column. Label with the current pseudo-labelling/label.py, "
+                "or set student.use_confidence_instead_of_marks to false."
+            )
+        for row in reader:
+            raw = (row["confidence"] or "").strip()
+            if raw and low <= float(raw) <= high:
+                found.add(row["ID"])
+    return found
+
+
+def student_ids(cfg) -> tuple[set[str] | None, str]:
+    """Which ``student.labels`` rows train the student (None: all) and a short description.
+
+    ``student.use_confidence_instead_of_marks`` picks by ``accepted_confidence``;
+    otherwise ``filter_marks`` picks by ``accepted_mark``; otherwise every row.
+    """
+    if cfg.use_confidence:
+        low, high = cfg.accepted_confidence
+        return confident_ids(cfg.labels, low, high), f"confidence {low:g}-{high:g}"
+    if cfg.filter_marks:
+        return accepted_ids(cfg.marks, cfg.accepted_mark), f"marks {list(cfg.accepted_mark)}"
+    return None, "all labels"
+
+
 def load_slices(labels_path: Path, wanted: set[str] | None) -> list[SliceExample]:
     if not labels_path.is_file():
         raise SystemExit(f"Labels file not found: {labels_path}")

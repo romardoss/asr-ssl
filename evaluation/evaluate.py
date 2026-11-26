@@ -102,6 +102,8 @@ TRAINING_FIELDS = (
     "cv_train_rows",
     "filter_marks",
     "accepted_mark",
+    "use_confidence_instead_of_marks",
+    "accepted_confidence",
     "labels",
     "learning_rate",
     "max_epochs",

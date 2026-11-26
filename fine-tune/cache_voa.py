@@ -7,9 +7,10 @@ The student then reads these files instead of running ffmpeg per mp3, which
 frees the CPU (two runs at once were starving both GPUs).
 
 By default the slices are those the student trains on: ``student.labels``
-filtered by ``student.marks`` and ``student.accepted_mark``. ``--all`` caches
-every labelled slice (any mark), so changing ``accepted_mark`` needs no new
-pass. Already cached slices are skipped, so an interrupted run just restarts.
+filtered by ``student.marks`` and ``student.accepted_mark``, or by
+``student.accepted_confidence`` when ``student.use_confidence_instead_of_marks``
+is true. ``--all`` caches every labelled slice, so changing the filter needs no
+new pass. Already cached slices are skipped, so an interrupted run just restarts.
 
     python main.py cache-voa [--all] [--workers N]
     python fine-tune/cache_voa.py [--all] [--workers N]
@@ -37,9 +38,9 @@ from preprocess import Segment, decode, index_shards, iter_shard_audio, slice_au
 from settings import load_student_settings  # noqa: E402
 from voa_slices import (  # noqa: E402
     SliceExample,
-    accepted_ids,
     cache_file,
     load_slices,
+    student_ids,
     to_int16,
     write_cache_meta,
 )
@@ -101,12 +102,8 @@ def main() -> None:
     root = cfg.voa_cache
     write_cache_meta(root, cfg.sample_rate, cfg.max_audio_seconds)
 
-    if cfg.filter_marks and not args.all:
-        examples = load_slices(cfg.labels, accepted_ids(cfg.marks, cfg.accepted_mark))
-        scope = f"marks {list(cfg.accepted_mark)}"
-    else:
-        examples = load_slices(cfg.labels, None)
-        scope = "all marks"
+    wanted, scope = (None, "all labels") if args.all else student_ids(cfg)
+    examples = load_slices(cfg.labels, wanted)
     todo = [example for example in examples if not cache_file(root, example.id).is_file()]
     print(f"{cfg.labels}\n{scope}: {len(examples)} slices, {len(examples) - len(todo)} cached, {len(todo)} to do -> {root}")
     if not todo:

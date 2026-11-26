@@ -255,6 +255,9 @@ class StudentSettings:
     labels: Path
     filter_marks: bool
     accepted_mark: tuple[int, ...]
+    # True: rows are picked by the teacher's confidence in student.labels; marks are not read.
+    use_confidence: bool
+    accepted_confidence: tuple[float, float] | None
     voa: Path
     voa_cache: Path | None
     sample_rate: int
@@ -330,6 +333,19 @@ def _mark_list(section: dict, key: str, label: str) -> tuple[int, ...]:
     return tuple(marks)
 
 
+def _confidence_range(section: dict, key: str, label: str) -> tuple[float, float]:
+    value = _require(section, key, label)
+    message = f"config.yaml {label} must be [from, to]: two numbers from 0 to 1, from <= to"
+    if not isinstance(value, list) or len(value) != 2:
+        raise SystemExit(message)
+    if any(isinstance(item, bool) or not isinstance(item, (int, float)) for item in value):
+        raise SystemExit(message)
+    low, high = float(value[0]), float(value[1])
+    if not 0.0 <= low <= high <= 1.0:
+        raise SystemExit(message)
+    return low, high
+
+
 def load_student_settings(path: Path | None = None) -> StudentSettings:
     config_path = path or CONFIG_PATH
     if not config_path.is_file():
@@ -347,8 +363,17 @@ def load_student_settings(path: Path | None = None) -> StudentSettings:
     if eval_data != "common_voice":
         raise SystemExit("config.yaml student.eval_data must be common_voice")
     filter_marks = _bool(student, "filter_marks", "student.filter_marks")
+    # Optional, so configs saved before it existed still load.
+    use_confidence = student.get("use_confidence_instead_of_marks", False)
+    if not isinstance(use_confidence, bool):
+        raise SystemExit("config.yaml student.use_confidence_instead_of_marks must be true or false")
+    accepted_confidence = (
+        _confidence_range(student, "accepted_confidence", "student.accepted_confidence")
+        if use_confidence or "accepted_confidence" in student
+        else None
+    )
     labels = _stored_path(student, "labels", "student.labels", loaded, "labels.csv")
-    if filter_marks:
+    if filter_marks and not use_confidence:
         marks = _stored_path(student, "marks", "student.marks", loaded, "label_marks.csv")
     else:
         marks = Path()
@@ -363,6 +388,8 @@ def load_student_settings(path: Path | None = None) -> StudentSettings:
         labels=labels,
         filter_marks=filter_marks,
         accepted_mark=accepted,
+        use_confidence=use_confidence,
+        accepted_confidence=accepted_confidence,
         voa=_path(student, "voa", "student.voa"),
         # Optional: decoded slices from fine-tune/cache_voa.py. Unset: every slice is decoded from mp3.
         voa_cache=_path(student, "voa_cache", "student.voa_cache") if _optional_text(student, "voa_cache", "student.voa_cache") else None,

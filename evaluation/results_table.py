@@ -54,6 +54,7 @@ RUN_COLUMNS = (
     "init",
     "train_data",
     "accepted_marks",
+    "accepted_confidence",
     "cv_train_rows",
     "learning_rate",
     "max_epochs",
@@ -120,10 +121,13 @@ def run_row(run: Path, evaluation_dir: Path) -> dict | None:
     section = config.get("student" if model_type == "student" else "training") or {}
     data = config.get("data") or {}
     if model_type == "student":
-        accepted = section.get("accepted_mark") if section.get("filter_marks", True) else None
+        by_confidence = section.get("use_confidence_instead_of_marks") is True
+        accepted = section.get("accepted_mark") if section.get("filter_marks", True) and not by_confidence else None
+        confidence = section.get("accepted_confidence") if by_confidence else None
         train_data = ["voa_pseudo_labels"] if section else None
     else:
         accepted = None
+        confidence = None
         train_data = data.get("train")
     pretrained = model_type == "pretrained"
 
@@ -141,7 +145,8 @@ def run_row(run: Path, evaluation_dir: Path) -> dict | None:
         "checkpoint_path": None if pretrained else payload.get("model"),
         "init": meta.get("init") or (None if pretrained else section.get("init")),
         "train_data": None if pretrained else _join(meta.get("train_data") or train_data),
-        "accepted_marks": _join(meta.get("accepted_mark") or accepted),
+        "accepted_marks": _join(meta.get("accepted_mark") or (None if "accepted_confidence" in meta else accepted)),
+        "accepted_confidence": _join(meta.get("accepted_confidence") or (None if "accepted_mark" in meta else confidence)),
         "cv_train_rows": meta.get("cv_train_rows"),
         "learning_rate": None if pretrained else meta.get("learning_rate") or section.get("learning_rate"),
         "max_epochs": None if pretrained else meta.get("max_epochs") or section.get("max_epochs"),
