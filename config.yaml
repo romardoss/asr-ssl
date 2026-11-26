@@ -31,8 +31,8 @@ model:
 # The one GPU of every stage: fine-tune, student, multi_step, evaluation, labelling, language ID.
 # Exactly one must be true. For parallel runs use one config file per GPU (ASR_CONFIG).
 gpus:
-  nvidia0: false 
-  nvidia1: true
+  nvidia0: true 
+  nvidia1: false
 
 # Full checkpoint (weights and optimizer) every this fraction of an epoch, for every training stage.
 # 0.25 saves at 25, 50, and 75 %; the end of each epoch is always saved. 1.0: epoch ends only.
@@ -117,20 +117,20 @@ student:
   # Not listed here, so taken from training (and batch_size.train): learning_rate, warmup_steps, max_epochs,
   # num_workers, precision, seed, gradient_clip, weight_decay, accumulate_grad_batches, resume, val_every,
   # limit_train_batches, limit_val_batches, batch_size.train. Set one here to give the student its own value.
-  name: student_whisper-fixed-leaks-7-epochs
+  name: student_whisper-fixed-leaks-7-epochs-marks345-pluscv
   base: openai/whisper-medium
   init: openai/whisper-medium
   # Own value: the workers read parquet and decode VOA mp3 with ffmpeg; log-mel is made on the GPU.
   num_workers: 12
   # latest uses the newest labels.csv / label_marks.csv for pseudo_labelling.teacher_model
   marks: latest
-  labels: latest
+  labels: output/pseudo-labelling/model-whisper-m-fixed-leaks-10-epochs-epoch05-01/labels.csv
   # false trains on every non-empty label and does not read marks
   filter_marks: true
   accepted_mark: [3, 4, 5]
   # Labelled train sets (data.train names) trained in the same run after the pseudo-labels:
   # each epoch ends on them. accepted_mark does not apply to them. Empty: pseudo-labels only.
-  extra_train: []
+  extra_train: [common_voice]
   voa: ${paths.voa}
   # Missing slices (or no cache) are decoded from the mp3 with ffmpeg as before.
   voa_cache: ${paths.voa_cache}
@@ -138,7 +138,7 @@ student:
   language: uk
   eval_data: common_voice
   batch_size:
-    eval: 16
+    eval: 24
   baseline_eval: false
   limit_test_batches: 1.0
   max_audio_seconds: 30.0

@@ -1,0 +1,2 @@
+2026-11-26 09:23:45,254 INFO model=/mnt/data/rberehun/checkpoints/student_whisper-fixed-leaks-7-epochs-marks345-pluscv_01/student_whisper-fixed-leaks-7-epochs-marks345-pluscv-epoch00.ckpt kind=ckpt gpus=['nvidia1'] CUDA_VISIBLE_DEVICES=1 testing_batch=80
+2026-11-26 09:23:47,686 INFO test clips: 18345 (common_voice 10956, fleurs 750, ukr_dialects 3435, cv10_test 3204)
