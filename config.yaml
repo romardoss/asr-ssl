@@ -117,14 +117,14 @@ student:
   # Not listed here, so taken from training (and batch_size.train): learning_rate, warmup_steps, max_epochs,
   # num_workers, precision, seed, gradient_clip, weight_decay, accumulate_grad_batches, resume, val_every,
   # limit_train_batches, limit_val_batches, batch_size.train. Set one here to give the student its own value.
-  name: student_whisper-fixed-leaks-7-epochs-marks12345-pluscv
+  name: student_whisper-fixed-leaks-7-epochs-conf085-pluscv
   base: openai/whisper-medium
   init: openai/whisper-medium
   # Own value: the workers read parquet and decode VOA mp3 with ffmpeg; log-mel is made on the GPU.
   num_workers: 10
   # latest uses the newest labels.csv / label_marks.csv for pseudo_labelling.teacher_model
   marks: latest
-  labels: output/pseudo-labelling/model-whisper-m-fixed-leaks-10-epochs-epoch05-01/labels.csv
+  labels: latest
   # false trains on every non-empty label and does not read marks
   filter_marks: true
   accepted_mark: [1, 2, 3, 4, 5]
